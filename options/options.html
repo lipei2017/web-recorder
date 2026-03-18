@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRecorder - 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>WebRecorder</h1>
+      <nav class="nav">
+        <button class="nav-btn active" data-tab="sessions">记录管理</button>
+        <button class="nav-btn" data-tab="domains">域名配置</button>
+        <button class="nav-btn" data-tab="settings">设置</button>
+        <button class="nav-btn" data-tab="help">帮助</button>
+      </nav>
+    </header>
+
+    <main class="main">
+      <!-- 记录管理 Tab -->
+      <div class="tab-content active" id="sessions-tab">
+        <div class="toolbar">
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="搜索记录...">
+          </div>
+          <div class="filters">
+            <select id="filterSelect">
+              <option value="all">全部</option>
+              <option value="today">今天</option>
+              <option value="week">本周</option>
+              <option value="month">本月</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="sessions-list" id="sessionsList">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>暂无录制记录</p>
+            <button class="btn btn-primary" id="goRecordBtn">开始录制</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 域名配置 Tab -->
+      <div class="tab-content" id="domains-tab">
+        <div class="settings-section">
+          <h3>允许的域名</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
+            配置可以录制和回放的域名。只有在此列表中的域名才能使用录制/回放功能。
+            <br>支持通配符: <code>*</code> 匹配任意字符, <code>?</code> 匹配单个字符
+          </p>
+          
+          <div class="domain-list" id="domainList" style="margin-bottom: 16px;">
+            <!-- 动态加载域名配置 -->
+          </div>
+          
+          <div class="domain-form" style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin-top: 16px;">
+            <h4 style="font-size: 14px; margin-bottom: 12px;">添加域名</h4>
+            
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 13px; margin-bottom: 4px;">域名模式</label>
+              <input type="text" id="newDomainPattern" placeholder="例如: *.example.com 或 test.local" 
+                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 13px; margin-bottom: 4px;">描述（可选）</label>
+              <input type="text" id="newDomainDesc" placeholder="例如: 测试环境" 
+                style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; font-size: 13px; margin-bottom: 8px;">功能模式</label>
+              <label style="display: inline-flex; align-items: center; margin-right: 16px; font-size: 13px;">
+                <input type="radio" name="domainMode" value="both" checked style="margin-right: 6px;">
+                录制和回放
+              </label>
+              <label style="display: inline-flex; align-items: center; margin-right: 16px; font-size: 13px;">
+                <input type="radio" name="domainMode" value="record" style="margin-right: 6px;">
+                仅录制
+              </label>
+              <label style="display: inline-flex; align-items: center; font-size: 13px;">
+                <input type="radio" name="domainMode" value="playback" style="margin-right: 6px;">
+                仅回放
+              </label>
+            </div>
+            
+            <button class="btn btn-primary" id="addDomainBtn" style="padding: 8px 16px;">添加域名</button>
+          </div>
+          
+          <div style="margin-top: 16px; padding: 12px; background: #e7f3ff; border-radius: 6px; font-size: 13px; color: #555;">
+            <strong>示例:</strong>
+            <ul style="margin: 8px 0 0 20px; line-height: 1.8;">
+              <li><code>localhost</code> - 仅匹配 localhost</li>
+              <li><code>*.example.com</code> - 匹配所有 example.com 的子域名</li>
+              <li><code>test.*.com</code> - 匹配 test. 开头 .com 结尾的域名</li>
+              <li><code>*.dev</code> - 匹配所有 .dev 后缀的域名</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置 Tab -->
+      <div class="tab-content" id="settings-tab">
+        <div class="settings-section">
+          <h3>录制设置</h3>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <input type="checkbox" id="captureXHR" checked>
+              <span>捕获 XMLHttpRequest 请求</span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <input type="checkbox" id="captureFetch" checked>
+              <span>捕获 Fetch 请求</span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <input type="checkbox" id="captureWebSocket" checked>
+              <span>捕获 WebSocket 消息</span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <input type="checkbox" id="captureStorage" checked>
+              <span>捕获 LocalStorage / SessionStorage</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>存储设置</h3>
+
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>自动清理旧记录（保留最近 30 天）</span>
+              <input type="checkbox" id="autoCleanup">
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <button class="btn btn-danger" id="clearAllBtn">
+              清除所有记录
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>URL 过滤配置</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 12px;">配置不需要捕获的接口路径（支持通配符 *）</p>
+          
+          <div class="setting-item">
+            <div class="filter-list" id="urlFilterList" style="margin-bottom: 12px;">
+              <!-- 动态加载已保存的过滤规则 -->
+            </div>
+            <div class="filter-input-group" style="display: flex; gap: 8px;">
+              <input type="text" id="newFilterPattern" placeholder="例如: /inter-api/auth/*" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+              <button class="btn btn-secondary" id="addFilterBtn" style="padding: 8px 16px;">添加</button>
+            </div>
+            <p style="font-size: 12px; color: #999; margin-top: 8px;">提示: 使用 * 作为通配符，如 /api/auth/* 会匹配所有以 /api/auth/ 开头的请求</p>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>回放设置</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 12px;">配置回放时需要过滤的 localStorage key（这些 key 不会被恢复）</p>
+          
+          <div class="setting-item">
+            <div class="filter-list" id="localStorageFilterList" style="margin-bottom: 12px;">
+              <!-- 动态加载已保存的 localStorage 过滤规则 -->
+            </div>
+            <div class="filter-input-group" style="display: flex; gap: 8px;">
+              <input type="text" id="newLocalStorageFilter" placeholder="例如: ticket, token, userId" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+              <button class="btn btn-secondary" id="addLocalStorageFilterBtn" style="padding: 8px 16px;">添加</button>
+            </div>
+            <p style="font-size: 12px; color: #999; margin-top: 8px;">提示: 输入 localStorage 的 key 名称，如 ticket。回放时这些 key 不会被恢复</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 帮助 Tab -->
+      <div class="tab-content" id="help-tab">
+        <div class="help-content">
+          <h3>快速开始</h3>
+          
+          <ol>
+            <li>点击扩展图标，选择"开始录制"</li>
+            <li>在当前页面进行操作（访问接口、使用功能）</li>
+            <li>点击"停止录制"保存记录</li>
+            <li>在记录管理中查看、导出或回放</li>
+          </ol>
+
+          <h3>功能说明</h3>
+          
+          <div class="feature-list">
+            <div class="feature-item">
+              <strong>网络请求捕获</strong>
+              <p>自动捕获 XMLHttpRequest、Fetch 和 WebSocket 请求，包括请求头、请求体、响应数据和状态码。支持跨域请求捕获。由于无法获取响应体，需要对 XHR 和 Fetch 进行代理。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>存储数据捕获</strong>
+              <p>捕获 LocalStorage、SessionStorage 和 Cookies 的快照，每隔 5 秒自动捕获一次。使用对象代理捕获修改操作。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>数据导出</strong>
+              <p>支持导出为 JSON 格式（完整数据）或 HAR 格式（兼容 Chrome DevTools）。HAR 格式可在其他工具中打开分析。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>请求回放</strong>
+              <p>拦截页面请求并返回录制的响应数据，用于离线开发和测试。回放时会恢复存储数据。</p>
+            </div>
+          </div>
+
+          <h3>注意事项</h3>
+          
+          <ul>
+            <li>录制期间请勿关闭浏览器或刷新页面</li>
+            <li>大量数据可能影响性能，建议定期清理</li>
+            <li>某些网站可能有 CSP 限制，导致脚本无法注入</li>
+            <li>回放功能会拦截匹配 URL 和请求方法的请求</li>
+          </ul>
+
+          <p class="help-footer">
+            版本: 1.0.0 | <a href="https://github.com/your-repo/web-recorder" target="_blank">GitHub</a>
+          </p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 详情模态框 -->
+  <div class="modal" id="detailModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>记录详情</h2>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+      
+      <div class="modal-body" id="modalBody">
+        <!-- 动态内容 -->
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="exportJsonBtn">导出 JSON</button>
+        <button class="btn btn-secondary" id="exportHarBtn">导出 HAR</button>
+        <button class="btn btn-primary" id="playbackBtn">回放</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出配置模态框 -->
+  <div class="modal" id="exportModal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>导出 JSON 配置</h2>
+        <button class="modal-close" id="exportModalClose">×</button>
+      </div>
+      
+      <div class="modal-body" id="exportModalBody">
+        <div class="export-options">
+          <div class="export-option-group">
+            <h4>导出内容</h4>
+            <label class="export-option">
+              <input type="checkbox" id="exportRequests" checked>
+              <span>网络请求</span>
+            </label>
+            <label class="export-option">
+              <input type="checkbox" id="exportSnapshots" checked>
+              <span>存储快照</span>
+            </label>
+            <label class="export-option">
+              <input type="checkbox" id="exportSessionInfo" checked>
+              <span>会话信息</span>
+            </label>
+          </div>
+          
+          <div class="export-option-group">
+            <h4>文件名</h4>
+            <input type="text" id="exportFilename" placeholder="web-recorder-export" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <small style="color: #666; display: block; margin-top: 4px;">留空将自动生成文件名</small>
+          </div>
+          
+          <div class="export-option-group">
+            <h4>格式选项</h4>
+            <label class="export-option">
+              <input type="radio" name="jsonFormat" value="pretty" checked>
+              <span>美化格式（易读）</span>
+            </label>
+            <label class="export-option">
+              <input type="radio" name="jsonFormat" value="compact">
+              <span>压缩格式（文件更小）</span>
+            </label>
+          </div>
+          
+          <div class="export-option-group">
+            <h4>请求过滤</h4>
+            <select id="requestFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+              <option value="all">全部请求</option>
+              <option value="xhr">仅 XHR 请求</option>
+              <option value="fetch">仅 Fetch 请求</option>
+              <option value="websocket">仅 WebSocket</option>
+              <option value="success">仅成功请求 (2xx)</option>
+              <option value="error">仅失败请求</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="export-preview" style="margin-top: 20px;">
+          <h4>预览</h4>
+          <div id="exportPreview" style="background: #f5f5f5; padding: 12px; border-radius: 4px; max-height: 200px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;"></div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="copyJsonBtn">复制到剪贴板</button>
+        <button class="btn btn-primary" id="confirmExportBtn">导出下载</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
