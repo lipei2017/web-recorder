@@ -2,11 +2,20 @@
 const DB_NAME = 'WebRecorderDB';
 const DB_VERSION = 1;
 
+/**
+ * WebRecorder 数据库管理类
+ * 封装 IndexedDB 操作，提供会话、请求、快照的 CRUD 操作
+ */
 class WebRecorderDB {
   constructor() {
     this.db = null;
   }
 
+  /**
+   * 初始化数据库连接
+   * @returns {Promise<IDBDatabase>} 数据库实例
+   * @throws {Error} 数据库打开失败时抛出错误
+   */
   async init() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -45,7 +54,13 @@ class WebRecorderDB {
     });
   }
 
-  // 创建新会话
+  /**
+   * 创建新会话
+   * @param {Object} sessionData - 会话数据
+   * @param {string} sessionData.url - 页面 URL
+   * @param {string} sessionData.title - 页面标题
+   * @returns {Promise<Object>} 创建的会话对象
+   */
   async createSession(sessionData) {
     const session = {
       id: this.generateId(),
@@ -68,7 +83,11 @@ class WebRecorderDB {
     });
   }
 
-  // 结束会话
+  /**
+   * 结束会话
+   * @param {string} sessionId - 会话ID
+   * @returns {Promise<Object>} 更新后的会话对象
+   */
   async endSession(sessionId) {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(['sessions'], 'readwrite');

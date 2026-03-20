@@ -779,4 +779,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       minute: '2-digit' 
     });
   }
+
+  // 页面卸载时清理资源（P1优化）
+  window.addEventListener('beforeunload', () => {
+    // 清理计时器
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    // 清理状态检查
+    if (statusCheckInterval) {
+      clearInterval(statusCheckInterval);
+      statusCheckInterval = null;
+    }
+    console.log('[WebRecorder Popup] 资源已清理');
+  });
 });

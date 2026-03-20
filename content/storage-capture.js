@@ -219,5 +219,19 @@
     }, 100);
   }
 
+  // 页面卸载时清理资源（P1优化）
+  window.addEventListener('beforeunload', () => {
+    if (captureInterval) {
+      clearInterval(captureInterval);
+      captureInterval = null;
+    }
+    if (captureTimeout) {
+      clearTimeout(captureTimeout);
+      captureTimeout = null;
+    }
+    isCapturing = false;
+    console.log('[WebRecorder] 存储捕获器已清理');
+  });
+
   console.log('[WebRecorder] 存储捕获器已注入');
 })();

@@ -89,6 +89,7 @@ async function checkAndRestoreRecording() {
             timestamp: Date.now()
           }));
         } catch (error) {
+          console.warn('[Content] 无法写入 sessionStorage:', error);
         }
         
         // 确保脚本已注入
@@ -115,9 +116,12 @@ async function checkAndRestoreRecording() {
       // 没有在录制，清除 sessionStorage 中的标记
       try {
         sessionStorage.removeItem('webrecorder_recording');
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[Content] 无法清除录制标记:', e);
+      }
     }
   } catch (error) {
+    console.error('[Content] 检查录制状态失败:', error);
   }
   return false;
 }
@@ -261,6 +265,7 @@ async function startCapture(id) {
       timestamp: Date.now()
     }));
   } catch (error) {
+    console.warn('[Content] 无法保存录制标记:', error);
   }
 
   // 如果脚本尚未注入，尝试再次注入
@@ -285,6 +290,7 @@ function stopCapture() {
   try {
     sessionStorage.removeItem('webrecorder_recording');
   } catch (error) {
+    console.warn('[Content] 无法清除录制标记:', error);
   }
 
   window.postMessage({
@@ -295,6 +301,16 @@ function stopCapture() {
 
 async function startPlayback(session, saveToStorage = true) {
   console.log('[Content] startPlayback 被调用, session.id:', session?.id, 'saveToStorage:', saveToStorage);
+  
+  // 关键修复：确保清除录制状态，避免刷新后错误恢复录制
+  try {
+    await chrome.storage.local.remove('recordingState');
+    sessionStorage.removeItem('webrecorder_recording');
+    console.log('[Content] 已清除录制状态');
+  } catch (e) {
+    console.warn('[Content] 清除录制状态失败:', e);
+  }
+  
   if (!isScriptInjected) {
     console.log('[Content] 脚本未注入，先注入脚本...');
     await injectScript();
@@ -347,6 +363,7 @@ async function startPlayback(session, saveToStorage = true) {
           timestamp: Date.now()
         }));
       } catch (e) {
+        console.error('[Content] 无法保存回放状态（sessionId）:', e);
       }
     }
   }
@@ -369,6 +386,7 @@ function stopPlayback() {
     const hadData = sessionStorage.getItem('webrecorder_playback');
     sessionStorage.removeItem('webrecorder_playback');
   } catch (error) {
+    console.warn('[Content] 无法清除回放状态:', error);
   }
 
   window.postMessage({

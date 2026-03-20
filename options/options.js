@@ -1621,28 +1621,60 @@ async function loadDomainConfigs() {
       return;
     }
 
-    // 渲染域名列表
-    domainList.innerHTML = domains.map(domain => `
-      <div style="background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-        <div style="flex: 1;">
-          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">
-            ${domain.domain}
-            <span style="font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; ${getModeStyle(domain.mode)}">
-              ${getModeText(domain.mode)}
-            </span>
-          </div>
-          ${domain.description ? `<div style="font-size: 12px; color: #666;">${domain.description}</div>` : ''}
-        </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-secondary btn-edit-domain" data-domain-id="${domain.id}" style="padding: 6px 12px; font-size: 12px;">
-            编辑
-          </button>
-          <button class="btn btn-danger btn-delete-domain" data-domain-id="${domain.id}" style="padding: 6px 12px; font-size: 12px;">
-            删除
-          </button>
-        </div>
-      </div>
-    `).join('');
+    // 渲染域名列表（使用安全的 DOM 操作代替 innerHTML）
+    domainList.innerHTML = '';
+    
+    domains.forEach(domain => {
+      const item = document.createElement('div');
+      item.style.cssText = 'background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;';
+      
+      // 左侧内容
+      const leftDiv = document.createElement('div');
+      leftDiv.style.cssText = 'flex: 1;';
+      
+      // 域名和标签
+      const domainRow = document.createElement('div');
+      domainRow.style.cssText = 'font-weight: 600; font-size: 14px; margin-bottom: 4px;';
+      domainRow.textContent = domain.domain; // 安全：使用 textContent
+      
+      const modeSpan = document.createElement('span');
+      modeSpan.style.cssText = `font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; ${getModeStyle(domain.mode)}`;
+      modeSpan.textContent = getModeText(domain.mode);
+      domainRow.appendChild(modeSpan);
+      
+      leftDiv.appendChild(domainRow);
+      
+      // 描述（如果有）
+      if (domain.description) {
+        const descDiv = document.createElement('div');
+        descDiv.style.cssText = 'font-size: 12px; color: #666;';
+        descDiv.textContent = domain.description; // 安全：使用 textContent
+        leftDiv.appendChild(descDiv);
+      }
+      
+      // 右侧按钮
+      const rightDiv = document.createElement('div');
+      rightDiv.style.cssText = 'display: flex; gap: 8px;';
+      
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-edit-domain';
+      editBtn.dataset.domainId = domain.id;
+      editBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+      editBtn.textContent = '编辑';
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-delete-domain';
+      deleteBtn.dataset.domainId = domain.id;
+      deleteBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+      deleteBtn.textContent = '删除';
+      
+      rightDiv.appendChild(editBtn);
+      rightDiv.appendChild(deleteBtn);
+      
+      item.appendChild(leftDiv);
+      item.appendChild(rightDiv);
+      domainList.appendChild(item);
+    });
 
     // 绑定编辑按钮事件
     domainList.querySelectorAll('.btn-edit-domain').forEach(btn => {

@@ -2,7 +2,9 @@
   "manifest_version": 3,
   "name": "WebRecorder - 网页记录器",
   "version": "1.0.0",
-  "description": "捕获网页网络请求和存储数据，支持导出和回放",
+  "description": "捕获网页网络请求和存储数据，支持导出和回放。",
+  "author": "lipei",
+  "homepage_url": "https://github.com/your-repo/web-recorder",
   "permissions": [
     "activeTab",
     "storage",
