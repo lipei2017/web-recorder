@@ -9,83 +9,79 @@
 <body>
   <div class="container">
     <header class="header">
-      <h1>WebRecorder</h1>
-      <span class="version">v1.0.0</span>
+      <div class="header-left">
+        <h1>WebRecorder</h1>
+        <span class="version">v1.0.0</span>
+      </div>
+      <div class="header-right">
+        <button class="btn-header-record btn-header-wide" id="startBtn" title="开始录制">
+          🔴 录制
+        </button>
+        <button class="btn-header-record btn-header-wide btn-recording" id="stopBtn" disabled title="停止录制">
+          ⏹ 停止
+        </button>
+        <button class="btn-header-record btn-header-wide" id="stopPlaybackBtn" style="display: none;" title="停止回放">
+          ⏹ 停止
+        </button>
+        <button class="btn-icon-only" id="openOptionsBtn" title="设置">
+          ⚙️
+        </button>
+      </div>
     </header>
 
     <main class="main">
-      <!-- 状态显示 -->
-      <div class="status-section">
-        <div class="status-indicator" id="statusIndicator">
+      <!-- 状态栏 -->
+      <div class="status-bar" id="statusBar">
+        <div class="status-left">
           <span class="status-dot" id="statusDot"></span>
-          <span class="status-text" id="statusText">准备就绪</span>
+          <span class="status-text" id="statusText">就绪</span>
+          <span class="status-detail" id="statusDetail" style="display: none;">
+            <span id="requestCount">0</span> | <span class="timer" id="timer">00:00</span>
+          </span>
         </div>
-        <div class="session-info" id="sessionInfo" style="display: none;">
-          <span class="request-count" id="requestCount">0 个请求</span>
-          <span class="timer" id="timer">00:00</span>
-        </div>
-      </div>
-
-      <!-- 控制按钮 -->
-      <div class="controls">
-        <button class="btn btn-primary" id="startBtn">
-          <span class="btn-icon">●</span>
-          <span class="btn-text">开始录制</span>
-        </button>
-        <button class="btn btn-danger" id="stopBtn" disabled>
-          <span class="btn-icon">■</span>
-          <span class="btn-text">停止录制</span>
-        </button>
-      </div>
-
-      <!-- 快捷操作 -->
-      <div class="quick-actions">
-        <button class="btn btn-secondary" id="viewSessionsBtn">
-          <span class="btn-icon">📋</span>
-          <span class="btn-text">查看记录</span>
-        </button>
-        <button class="btn btn-secondary" id="openOptionsBtn">
-          <span class="btn-icon">⚙️</span>
-          <span class="btn-text">设置</span>
-        </button>
-      </div>
-
-      <!-- 分割线 -->
-      <div class="divider"></div>
-
-      <!-- 域名匹配状态 -->
-      <div class="domain-section" id="domainSection" style="display: none;">
-        <div class="domain-status" id="domainStatus">
-          <span class="domain-badge" id="domainBadge">自动</span>
-          <span class="domain-text" id="domainText">匹配中...</span>
-        </div>
-        <div class="domain-info" id="domainInfo" style="display: none;">
-          <div class="domain-match" id="domainMatch"></div>
-          <div class="domain-mode" id="domainMode"></div>
+        <div class="status-right">
+          <span class="domain-badge-mini" id="domainBadge">●</span>
+          <span class="domain-text-mini" id="domainText">未配置</span>
         </div>
       </div>
 
-      <!-- 回放区域 -->
-      <div class="playback-section" id="playbackSection">
-        <h3>回放记录</h3>
-        <div class="playback-list" id="playbackList">
-          <!-- 动态加载记录列表 -->
+      <!-- 会话列表区域 -->
+      <div class="sessions-section" id="sessionsSection">
+        <div class="section-header">
+          <h3>会话列表</h3>
+          <button class="btn-import" id="importBtn" title="导入会话">
+            📥 导入
+          </button>
         </div>
-        <div class="playback-empty" id="playbackEmpty" style="display: none;">
-          <span class="empty-icon">🎬</span>
-          <p>暂无可用记录</p>
-        </div>
-        <button class="btn btn-danger" id="stopPlaybackBtn" style="display: none; margin-top: 12px; width: 100%;">
-          <span class="btn-icon">⏹</span>
-          <span class="btn-text">停止回放</span>
-        </button>
-      </div>
 
-      <!-- 最近记录 -->
-      <div class="recent-section" id="recentSection" style="display: none;">
-        <h3>最近录制</h3>
-        <div class="recent-list" id="recentList">
+        <!-- 筛选标签 -->
+        <div class="filter-tabs" id="filterTabs">
+          <button class="tab-btn active" data-filter="all">全部</button>
+          <button class="tab-btn" data-filter="recorded">📹 录制</button>
+          <button class="tab-btn" data-filter="imported">📥 导入</button>
+        </div>
+
+        <!-- 搜索框 -->
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="搜索会话..." />
+          <span class="search-icon">🔍</span>
+        </div>
+
+        <!-- 会话列表 -->
+        <div class="sessions-list" id="sessionsList">
           <!-- 动态加载 -->
+        </div>
+
+        <!-- 空状态 -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <span class="empty-icon">📋</span>
+          <p>暂无会话记录</p>
+          <button class="btn btn-secondary btn-small" id="goRecordBtn">开始录制</button>
+        </div>
+
+        <!-- 查看更多 -->
+        <div class="view-more" id="viewMore" style="display: none;">
+          <button class="btn-text" id="viewAllBtn">查看全部 →</button>
         </div>
       </div>
     </main>
@@ -94,6 +90,9 @@
       <a href="#" id="helpLink">使用帮助</a>
     </footer>
   </div>
+
+  <!-- 导入文件输入（隐藏） -->
+  <input type="file" id="importFileInput" accept=".json,.har" style="display: none;" />
 
   <script src="popup.js"></script>
 </body>

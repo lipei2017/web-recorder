@@ -9,7 +9,9 @@
     "tabs",
     "scripting",
     "cookies",
-    "unlimitedStorage"
+    "downloads",
+    "unlimitedStorage",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"

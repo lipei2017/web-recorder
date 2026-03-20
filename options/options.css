@@ -150,6 +150,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 400px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-source {
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .session-url {

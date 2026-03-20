@@ -142,7 +142,7 @@
 
           <div class="setting-item">
             <label class="setting-label">
-              <span>自动清理旧记录（保留最近 30 天）</span>
+              <span>自动清理旧记录（保留最近 3 天）</span>
               <input type="checkbox" id="autoCleanup">
             </label>
           </div>
@@ -190,46 +190,152 @@
       <!-- 帮助 Tab -->
       <div class="tab-content" id="help-tab">
         <div class="help-content">
-          <h3>快速开始</h3>
+          <h3>📖 快速开始</h3>
           
           <ol>
-            <li>点击扩展图标，选择"开始录制"</li>
-            <li>在当前页面进行操作（访问接口、使用功能）</li>
-            <li>点击"停止录制"保存记录</li>
-            <li>在记录管理中查看、导出或回放</li>
+            <li><strong>配置域名</strong> - 在"域名配置"中添加允许录制的域名（如 localhost、*.example.com）</li>
+            <li><strong>开始录制</strong> - 点击扩展图标，选择"🔴 录制"</li>
+            <li><strong>进行操作</strong> - 在当前页面正常使用功能（访问接口、填写表单等）</li>
+            <li><strong>停止录制</strong> - 点击"⏹ 停止"保存记录</li>
+            <li><strong>查看/导出</strong> - 在记录管理中查看详情，或导出为 JSON/HAR 格式</li>
           </ol>
 
-          <h3>功能说明</h3>
+          <h3>🎯 界面说明</h3>
+          
+          <div class="feature-list">
+            <div class="feature-item">
+              <strong>顶部控制栏</strong>
+              <p>包含录制按钮（🔴 录制/⏹ 停止）和设置按钮（⚙️）。录制时按钮显示红色呼吸灯效果。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>状态栏</strong>
+              <p>左侧显示录制状态（● 就绪/录制中/回放中），右侧显示域名配置状态（● 已配置/未配置）。录制/回放时状态点会显示呼吸灯。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>会话列表</strong>
+              <p>显示所有会话，支持按类型筛选（全部/📹 录制/📥 导入）和搜索。点击 👁️ 查看详情，点击 ▶️ 回放。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>会话标记</strong>
+              <p>📹 表示本地录制的数据，📥 表示导入的外部数据。导入数据的时间显示为导入时间，标题使用文件名。</p>
+            </div>
+          </div>
+
+          <h3>⚙️ 功能说明</h3>
           
           <div class="feature-list">
             <div class="feature-item">
               <strong>网络请求捕获</strong>
-              <p>自动捕获 XMLHttpRequest、Fetch 和 WebSocket 请求，包括请求头、请求体、响应数据和状态码。支持跨域请求捕获。由于无法获取响应体，需要对 XHR 和 Fetch 进行代理。</p>
+              <p>自动捕获 XMLHttpRequest、Fetch 和 WebSocket 请求，包括请求头、请求体、响应数据和状态码。支持跨域请求捕获。</p>
             </div>
 
             <div class="feature-item">
               <strong>存储数据捕获</strong>
-              <p>捕获 LocalStorage、SessionStorage 和 Cookies 的快照，每隔 5 秒自动捕获一次。使用对象代理捕获修改操作。</p>
+              <p>捕获 LocalStorage 和 SessionStorage 的快照，每隔 5 秒自动捕获一次。回放时可选择恢复这些数据。</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>域名配置</strong>
+              <p>支持三种模式：<br>
+              • <strong>仅录制</strong> - 只支持录制功能<br>
+              • <strong>仅回放</strong> - 只支持回放功能<br>
+              • <strong>全部</strong> - 支持录制和回放<br>
+              支持通配符匹配（如 *.example.com）。</p>
             </div>
 
             <div class="feature-item">
               <strong>数据导出</strong>
-              <p>支持导出为 JSON 格式（完整数据）或 HAR 格式（兼容 Chrome DevTools）。HAR 格式可在其他工具中打开分析。</p>
+              <p><strong>JSON 格式</strong> - 包含完整数据，适合备份和恢复<br>
+              <strong>HAR 格式</strong> - 兼容 Chrome DevTools、Postman、Charles 等工具</p>
             </div>
 
             <div class="feature-item">
               <strong>请求回放</strong>
-              <p>拦截页面请求并返回录制的响应数据，用于离线开发和测试。回放时会恢复存储数据。</p>
+              <p>拦截页面请求并返回录制的响应数据。支持：<br>
+              • HTTP 请求回放（XHR/Fetch）<br>
+              • WebSocket 消息按顺序推送<br>
+              • LocalStorage/SessionStorage 数据恢复<br>
+              • 未匹配的请求正常发出（混合模式）</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>数据导入</strong>
+              <p>支持导入 JSON 和 HAR 格式文件。导入的数据：<br>
+              • 标记为 📥<br>
+              • 标题使用文件名（去掉扩展名）<br>
+              • 时间显示为导入时间<br>
+              • 可以像录制数据一样查看和回放</p>
             </div>
           </div>
 
-          <h3>注意事项</h3>
+          <h3>📤 JSON 导出功能</h3>
+          
+          <p>JSON 格式是 WebRecorder 的主要导出格式，支持丰富的自定义选项：</p>
+          
+          <div class="feature-list">
+            <div class="feature-item">
+              <strong>自定义导出内容</strong>
+              <p>灵活选择需要导出的数据类型：<br>
+              • 网络请求 - HTTP/XHR/Fetch/WebSocket 请求详情<br>
+              • 存储快照 - LocalStorage 和 SessionStorage 数据<br>
+              • 会话信息 - 时间、标题、域名等元数据</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>多种过滤方式</strong>
+              <p>精确筛选需要导出的请求：<br>
+              • 按类型过滤 - 仅 XHR、Fetch 或 WebSocket<br>
+              • 按状态码过滤 - 仅成功请求(2xx)或失败请求<br>
+              • URL 路径过滤 - 支持通配符匹配（如 /api/*）</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>格式选项</strong>
+              <p>根据需求选择合适的格式：<br>
+              • 美化格式 - 带缩进和换行，便于阅读和调试<br>
+              • 压缩格式 - 去除空白字符，文件体积更小</p>
+            </div>
+
+            <div class="feature-item">
+              <strong>导入回放</strong>
+              <p>导出的 JSON 文件可以重新导入 WebRecorder：<br>
+              • 在任意页面回放录制的请求<br>
+              • 恢复存储数据到原始状态<br>
+              • 团队成员共享和协作调试</p>
+            </div>
+          </div>
+
+          <h3>🔧 HAR 格式简介</h3>
+          
+          <p>HAR（HTTP Archive）是标准的网络请求记录格式，仅包含 HTTP 请求信息：</p>
           
           <ul>
-            <li>录制期间请勿关闭浏览器或刷新页面</li>
-            <li>大量数据可能影响性能，建议定期清理</li>
-            <li>某些网站可能有 CSP 限制，导致脚本无法注入</li>
-            <li>回放功能会拦截匹配 URL 和请求方法的请求</li>
+            <li>兼容 Chrome DevTools、Postman、Charles 等专业工具分析</li>
+            <li>标准的 HTTP Archive 格式，可用于网络调试和性能分析</li>
+            <li>仅包含 HTTP 请求数据（XHR/Fetch），不包含 WebSocket 和存储快照</li>
+          </ul>
+
+          <h3>⚠️ 注意事项</h3>
+          
+          <ul>
+            <li><strong>CSP 限制</strong> - 某些网站设置了严格的内容安全策略，可能阻止脚本注入</li>
+            <li><strong>跨域限制</strong> - 捕获其他域名的请求时，某些信息可能不完整</li>
+            <li><strong>性能影响</strong> - 录制大量数据可能影响页面性能，建议定期清理旧记录</li>
+            <li><strong>WebSocket 限制</strong> - WebSocket 消息仅支持文本，二进制数据会被忽略</li>
+            <li><strong>回放精度</strong> - 动态生成的 ID 可能无法完全匹配，依赖路径模式匹配</li>
+            <li><strong>扩展页面</strong> - chrome-extension:// 页面支持查看会话列表，但不可录制/回放</li>
+          </ul>
+
+          <h3>💡 使用技巧</h3>
+          
+          <ul>
+            <li><strong>过滤规则</strong> - 在设置中添加 URL 或 LocalStorage 过滤规则，排除不需要的数据</li>
+            <li><strong>批量管理</strong> - 在记录管理页面可以批量删除旧记录，释放存储空间</li>
+            <li><strong>团队协作</strong> - 导出 JSON 文件分享给团队成员，他们可以导入后查看和回放</li>
+            <li><strong>问题排查</strong> - 录制用户遇到的问题场景，导出 HAR 发给后端分析</li>
           </ul>
 
           <p class="help-footer">
@@ -255,7 +361,6 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="exportJsonBtn">导出 JSON</button>
         <button class="btn btn-secondary" id="exportHarBtn">导出 HAR</button>
-        <button class="btn btn-primary" id="playbackBtn">回放</button>
       </div>
     </div>
   </div>
@@ -264,7 +369,7 @@
   <div class="modal" id="exportModal">
     <div class="modal-content" style="max-width: 600px;">
       <div class="modal-header">
-        <h2>导出 JSON 配置</h2>
+        <h2 id="exportModalTitle">导出 JSON 配置</h2>
         <button class="modal-close" id="exportModalClose">×</button>
       </div>
       
@@ -280,6 +385,9 @@
               <input type="checkbox" id="exportSnapshots" checked>
               <span>存储快照</span>
             </label>
+            <small id="harSnapshotHint" style="color: #999; font-size: 11px; display: block; margin-top: 4px; margin-left: 20px; font-style: italic;">
+              HAR 格式不包含存储快照（HAR 标准只支持 HTTP 请求）
+            </small>
             <label class="export-option">
               <input type="checkbox" id="exportSessionInfo" checked>
               <span>会话信息</span>
@@ -292,7 +400,7 @@
             <small style="color: #666; display: block; margin-top: 4px;">留空将自动生成文件名</small>
           </div>
           
-          <div class="export-option-group">
+          <div class="export-option-group" id="formatOptionsGroup">
             <h4>格式选项</h4>
             <label class="export-option">
               <input type="radio" name="jsonFormat" value="pretty" checked>
@@ -306,7 +414,7 @@
           
           <div class="export-option-group">
             <h4>请求过滤</h4>
-            <select id="requestFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <select id="requestFilter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 12px;">
               <option value="all">全部请求</option>
               <option value="xhr">仅 XHR 请求</option>
               <option value="fetch">仅 Fetch 请求</option>
@@ -314,10 +422,17 @@
               <option value="success">仅成功请求 (2xx)</option>
               <option value="error">仅失败请求</option>
             </select>
+            
+            <label style="display: block; font-size: 13px; margin-bottom: 4px; margin-top: 12px;">URL 路径过滤（可选）</label>
+            <input type="text" id="urlPathFilter" placeholder="例如: /api/user 或 *compose* (支持通配符)" 
+              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+            <small style="color: #666; display: block; margin-top: 4px;">
+              支持通配符 * 匹配任意字符，留空则不过滤。例如：/api/* 或 *user*
+            </small>
           </div>
         </div>
         
-        <div class="export-preview" style="margin-top: 20px;">
+        <div class="export-preview" id="exportPreviewGroup" style="margin-top: 20px;">
           <h4>预览</h4>
           <div id="exportPreview" style="background: #f5f5f5; padding: 12px; border-radius: 4px; max-height: 200px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;"></div>
         </div>
@@ -326,6 +441,52 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="copyJsonBtn">复制到剪贴板</button>
         <button class="btn btn-primary" id="confirmExportBtn">导出下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑域名模态框 -->
+  <div class="modal" id="editDomainModal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>编辑域名配置</h2>
+        <button class="modal-close" id="editDomainModalClose">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; margin-bottom: 4px; font-weight: 600;">域名模式</label>
+          <input type="text" id="editDomainPattern" readonly 
+            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: #f5f5f5; color: #666;">
+          <small style="color: #999; display: block; margin-top: 4px;">域名模式不可修改</small>
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; margin-bottom: 4px; font-weight: 600;">描述</label>
+          <input type="text" id="editDomainDesc" placeholder="例如: 测试环境" 
+            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; margin-bottom: 8px; font-weight: 600;">功能模式</label>
+          <label style="display: inline-flex; align-items: center; margin-right: 16px; font-size: 13px;">
+            <input type="radio" name="editDomainMode" value="both" style="margin-right: 6px;">
+            录制和回放
+          </label>
+          <label style="display: inline-flex; align-items: center; margin-right: 16px; font-size: 13px;">
+            <input type="radio" name="editDomainMode" value="record" style="margin-right: 6px;">
+            仅录制
+          </label>
+          <label style="display: inline-flex; align-items: center; font-size: 13px;">
+            <input type="radio" name="editDomainMode" value="playback" style="margin-right: 6px;">
+            仅回放
+          </label>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelEditDomainBtn">取消</button>
+        <button class="btn btn-primary" id="saveEditDomainBtn">保存</button>
       </div>
     </div>
   </div>

@@ -12,11 +12,68 @@ let domainAutoStates = new Map(); // tabId -> { type: 'record'|'playback', confi
 // 初始化数据库
 chrome.runtime.onStartup.addListener(async () => {
   await db.init();
+  setupAutoCleanupAlarm();
+  await runAutoCleanup();
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
   await db.init();
+  setupAutoCleanupAlarm();
+  await runAutoCleanup();
 });
+
+// 设置自动清理定时器
+function setupAutoCleanupAlarm() {
+  // 每天检查一次
+  chrome.alarms.create('autoCleanup', {
+    periodInMinutes: 24 * 60 // 24小时
+  });
+}
+
+// 监听 alarm
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'autoCleanup') {
+    console.log('[Service Worker] 执行自动清理检查');
+    await runAutoCleanup();
+  }
+});
+
+// 自动清理函数 - 删除3天前的记录
+async function runAutoCleanup() {
+  try {
+    // 检查是否启用了自动清理
+    const result = await chrome.storage.local.get(['autoCleanup']);
+    if (!result.autoCleanup) {
+      console.log('[Service Worker] 自动清理未启用，跳过');
+      return;
+    }
+
+    await db.init();
+    const sessions = await db.getSessions();
+    
+    const now = Date.now();
+    const threeDays = 3 * 24 * 60 * 60 * 1000; // 3天的毫秒数
+    const cutoffTime = now - threeDays;
+    
+    let deletedCount = 0;
+    
+    for (const session of sessions) {
+      if (session.startTime < cutoffTime) {
+        await db.deleteSession(session.id);
+        deletedCount++;
+        console.log(`[Service Worker] 自动清理: 删除会话 ${session.id} (${session.title || '未命名'})`);
+      }
+    }
+    
+    if (deletedCount > 0) {
+      console.log(`[Service Worker] 自动清理完成: 删除了 ${deletedCount} 条旧记录`);
+    } else {
+      console.log('[Service Worker] 自动清理: 没有需要删除的旧记录');
+    }
+  } catch (error) {
+    console.error('[Service Worker] 自动清理失败:', error);
+  }
+}
 
 // 监听消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -89,6 +146,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_DOMAIN_STATUS':
       handleGetDomainStatus(message.tabId, sendResponse);
       return true;
+
+    case 'IMPORT_SESSION':
+      handleImportSession(message.session, sendResponse);
+      return true;
   }
 });
 
@@ -142,9 +203,9 @@ async function handleStartRecording(tab, sendResponse) {
     // 更新图标
     chrome.action.setIcon({
       path: {
-        16: 'icons/icon-recording16.png',
-        48: 'icons/icon-recording48.png',
-        128: 'icons/icon-recording128.png'
+        16: 'icons/icon16.png',
+        48: 'icons/icon48.png',
+        128: 'icons/icon128.png'
       },
       tabId: tab.id
     });
@@ -280,11 +341,17 @@ async function handleExportSession(sessionId, format, sendResponse) {
 
     if (format === 'json') {
       exportData = JSON.stringify(session, null, 2);
-      filename = `web-recorder-${sessionId}.json`;
+      const date = new Date(session.startTime).toISOString().split('T')[0];
+      filename = `${session.title || '未命名会话'}_${date}.json`
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, '_');
       mimeType = 'application/json';
     } else if (format === 'har') {
       exportData = convertToHAR(session);
-      filename = `web-recorder-${sessionId}.har`;
+      const date = new Date(session.startTime).toISOString().split('T')[0];
+      filename = `${session.title || '未命名会话'}_${date}.har`
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, '_');
       mimeType = 'application/har+json';
     } else {
       throw new Error('不支持的导出格式');
@@ -316,67 +383,258 @@ async function handleExportSession(sessionId, format, sendResponse) {
   }
 }
 
+// HTTP 状态码映射表
+const HTTP_STATUS_TEXTS = {
+  100: 'Continue',
+  101: 'Switching Protocols',
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  203: 'Non-Authoritative Information',
+  204: 'No Content',
+  205: 'Reset Content',
+  206: 'Partial Content',
+  300: 'Multiple Choices',
+  301: 'Moved Permanently',
+  302: 'Found',
+  303: 'See Other',
+  304: 'Not Modified',
+  305: 'Use Proxy',
+  307: 'Temporary Redirect',
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  402: 'Payment Required',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  406: 'Not Acceptable',
+  407: 'Proxy Authentication Required',
+  408: 'Request Timeout',
+  409: 'Conflict',
+  410: 'Gone',
+  411: 'Length Required',
+  412: 'Precondition Failed',
+  413: 'Request Entity Too Large',
+  414: 'Request-URI Too Long',
+  415: 'Unsupported Media Type',
+  416: 'Requested Range Not Satisfiable',
+  417: 'Expectation Failed',
+  500: 'Internal Server Error',
+  501: 'Not Implemented',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+  505: 'HTTP Version Not Supported'
+};
+
+function getStatusText(statusCode) {
+  return HTTP_STATUS_TEXTS[statusCode] || 'Unknown';
+}
+
+function calculateHeadersSize(headers, statusLine = '') {
+  let size = statusLine ? statusLine.length + 2 : 0;
+  for (const header of headers) {
+    size += `${header.name}: ${header.value}\r\n`.length;
+  }
+  size += 2;
+  return size;
+}
+
+function parseUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    return {
+      protocol: urlObj.protocol.replace(':', ''),
+      host: urlObj.host,
+      pathname: urlObj.pathname,
+      search: urlObj.search,
+      hash: urlObj.hash
+    };
+  } catch (e) {
+    return {
+      protocol: 'http',
+      host: '',
+      pathname: url,
+      search: '',
+      hash: ''
+    };
+  }
+}
+
+function parseQueryString(url) {
+  try {
+    const urlObj = new URL(url);
+    const queryString = [];
+    urlObj.searchParams.forEach((value, name) => {
+      queryString.push({ name, value });
+    });
+    return queryString;
+  } catch (e) {
+    return [];
+  }
+}
+
+function inferContentType(body, headers) {
+  if (headers && headers['content-type']) {
+    const ct = headers['content-type'];
+    if (ct.includes('json')) return 'application/json';
+    if (ct.includes('xml')) return 'text/xml';
+    if (ct.includes('html')) return 'text/html';
+    if (ct.includes('text')) return 'text/plain';
+    if (ct.includes('form')) return 'application/x-www-form-urlencoded';
+    return ct.split(';')[0];
+  }
+  
+  if (typeof body === 'string') {
+    try {
+      JSON.parse(body);
+      return 'application/json';
+    } catch (e) {
+      return 'text/plain';
+    }
+  }
+  
+  if (body && typeof body === 'object') {
+    return 'application/json';
+  }
+  
+  return 'application/octet-stream';
+}
+
 // 转换为 HAR 格式
 function convertToHAR(session) {
+  // 过滤只保留 xhr 和 fetch 请求（HAR 1.2 只支持 HTTP）
+  const httpRequests = (session.requests || []).filter(req => 
+    req.type === 'xhr' || req.type === 'fetch'
+  );
+
   const har = {
     log: {
       version: '1.2',
       creator: {
         name: 'WebRecorder',
-        version: '1.0.0'
+        version: '1.0.0',
+        comment: 'Generated by WebRecorder Chrome Extension'
+      },
+      browser: {
+        name: 'Chrome',
+        version: navigator.userAgent.match(/Chrome\/([\d.]+)/)?.[1] || 'unknown'
       },
       pages: [{
         startedDateTime: new Date(session.startTime).toISOString(),
         id: session.id,
-        title: session.title,
+        title: session.title || '未命名会话',
         pageTimings: {
           onContentLoad: -1,
           onLoad: -1
         }
       }],
-      entries: session.requests.map(req => ({
-        startedDateTime: new Date(req.timestamp).toISOString(),
-        time: req.duration || 0,
-        request: {
-          method: req.method,
-          url: req.url,
-          httpVersion: 'HTTP/1.1',
-          headers: Object.entries(req.headers || {}).map(([name, value]) => ({
-            name,
-            value: String(value)
-          })),
-          queryString: [],
-          postData: req.requestBody ? {
-            mimeType: 'application/json',
-            text: typeof req.requestBody === 'string' ? req.requestBody : JSON.stringify(req.requestBody)
-          } : undefined,
-          headersSize: -1,
-          bodySize: -1
-        },
-        response: {
-          status: req.status || 200,
-          statusText: 'OK',
-          httpVersion: 'HTTP/1.1',
-          headers: Object.entries(req.responseHeaders || {}).map(([name, value]) => ({
-            name,
-            value: String(value)
-          })),
-          content: {
-            size: -1,
-            mimeType: 'application/json',
-            text: typeof req.responseBody === 'string' ? req.responseBody : JSON.stringify(req.responseBody)
-          },
-          redirectURL: '',
-          headersSize: -1,
-          bodySize: -1
-        },
-        cache: {},
-        timings: {
-          send: 0,
-          wait: req.duration || 0,
-          receive: 0
+      entries: httpRequests.map(req => {
+        const urlInfo = parseUrl(req.url);
+        const requestHeaders = Object.entries(req.headers || {}).map(([name, value]) => ({
+          name,
+          value: String(value)
+        }));
+        
+        const responseHeaders = Object.entries(req.responseHeaders || {}).map(([name, value]) => ({
+          name,
+          value: String(value)
+        }));
+        
+        const queryString = parseQueryString(req.url);
+        
+        // 处理请求体
+        let postData = undefined;
+        if (req.requestBody) {
+          const requestContentType = inferContentType(req.requestBody, req.headers);
+          postData = {
+            mimeType: requestContentType,
+            text: typeof req.requestBody === 'string' 
+              ? req.requestBody 
+              : JSON.stringify(req.requestBody)
+          };
         }
-      }))
+        
+        // 处理响应体
+        const responseBody = req.responseBody !== undefined && req.responseBody !== null
+          ? (typeof req.responseBody === 'string' 
+              ? req.responseBody 
+              : JSON.stringify(req.responseBody))
+          : '';
+        
+        const responseContentType = inferContentType(req.responseBody, req.responseHeaders);
+        
+        // 计算大小
+        const requestHeadersSize = calculateHeadersSize(
+          requestHeaders, 
+          `${req.method} ${urlInfo.pathname}${urlInfo.search} HTTP/1.1`
+        );
+        const requestBodySize = postData && postData.text 
+          ? new Blob([postData.text]).size 
+          : 0;
+        
+        const statusCode = req.status || 0;
+        const statusText = getStatusText(statusCode);
+        const responseHeadersSize = calculateHeadersSize(
+          responseHeaders,
+          `HTTP/1.1 ${statusCode} ${statusText}`
+        );
+        const responseBodySize = responseBody 
+          ? new Blob([responseBody]).size 
+          : 0;
+        
+        // 构建完整的 timings 对象
+        const duration = req.duration || 0;
+        const timings = {
+          blocked: -1,
+          dns: -1,
+          connect: -1,
+          send: 0,
+          wait: duration,
+          receive: 0,
+          ssl: -1,
+          comment: 'Timings are approximated as full network timing data is not available'
+        };
+
+        return {
+          pageref: session.id,
+          startedDateTime: new Date(req.timestamp).toISOString(),
+          time: duration,
+          request: {
+            method: req.method,
+            url: req.url,
+            httpVersion: 'HTTP/1.1',
+            cookies: [],
+            headers: requestHeaders,
+            queryString: queryString,
+            postData: postData,
+            headersSize: requestHeadersSize,
+            bodySize: requestBodySize,
+            comment: `Request type: ${req.type || 'unknown'}`
+          },
+          response: {
+            status: statusCode,
+            statusText: statusText,
+            httpVersion: 'HTTP/1.1',
+            cookies: [],
+            headers: responseHeaders,
+            content: {
+              size: responseBodySize,
+              compression: undefined,
+              mimeType: responseContentType,
+              text: responseBody || undefined
+            },
+            redirectURL: req.responseHeaders?.location || req.responseHeaders?.Location || '',
+            headersSize: responseHeadersSize,
+            bodySize: responseBodySize
+          },
+          cache: {},
+          timings: timings,
+          serverIPAddress: '',
+          connection: '',
+          comment: `Original type: ${req.type}`
+        };
+      })
     }
   };
 
@@ -508,6 +766,99 @@ async function handleGetDomainStatus(tabId, sendResponse) {
       config: match ? match.config : null
     });
   } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// 导入会话
+async function handleImportSession(sessionData, sendResponse) {
+  try {
+    await db.init();
+
+    // 准备会话数据
+    const session = {
+      id: sessionData.id,
+      title: sessionData.title,
+      url: sessionData.url,
+      startTime: sessionData.startTime,
+      endTime: sessionData.endTime,
+      importedAt: sessionData.importedAt || Date.now(),
+      requestCount: sessionData.requestCount || 0,
+      snapshotCount: sessionData.snapshotCount || 0,
+      source: 'imported'
+    };
+
+    // 保存会话到 sessions 表
+    await new Promise((resolve, reject) => {
+      const transaction = db.db.transaction(['sessions'], 'readwrite');
+      const store = transaction.objectStore('sessions');
+      const request = store.add(session);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    // 保存请求到 requests 表
+    if (sessionData.requests && sessionData.requests.length > 0) {
+      await new Promise((resolve, reject) => {
+        const transaction = db.db.transaction(['requests'], 'readwrite');
+        const store = transaction.objectStore('requests');
+        
+        let completed = 0;
+        const total = sessionData.requests.length;
+        
+        sessionData.requests.forEach((reqData) => {
+          const request = {
+            id: reqData.id || db.generateId(),
+            sessionId: session.id,
+            ...reqData,
+            timestamp: reqData.timestamp || Date.now()
+          };
+          
+          const req = store.add(request);
+          req.onsuccess = () => {
+            completed++;
+            if (completed === total) resolve();
+          };
+          req.onerror = () => reject(req.error);
+        });
+        
+        if (total === 0) resolve();
+      });
+    }
+
+    // 保存快照到 snapshots 表
+    if (sessionData.snapshots && sessionData.snapshots.length > 0) {
+      await new Promise((resolve, reject) => {
+        const transaction = db.db.transaction(['snapshots'], 'readwrite');
+        const store = transaction.objectStore('snapshots');
+        
+        let completed = 0;
+        const total = sessionData.snapshots.length;
+        
+        sessionData.snapshots.forEach((snapshotData) => {
+          const snapshot = {
+            id: snapshotData.id || db.generateId(),
+            sessionId: session.id,
+            ...snapshotData,
+            timestamp: snapshotData.timestamp || Date.now()
+          };
+          
+          const req = store.add(snapshot);
+          req.onsuccess = () => {
+            completed++;
+            if (completed === total) resolve();
+          };
+          req.onerror = () => reject(req.error);
+        });
+        
+        if (total === 0) resolve();
+      });
+    }
+
+    console.log(`[Service Worker] 会话导入成功: ${session.id}`);
+    sendResponse({ success: true, sessionId: session.id });
+  } catch (error) {
+    console.error('[Service Worker] 会话导入失败:', error);
     sendResponse({ success: false, error: error.message });
   }
 }

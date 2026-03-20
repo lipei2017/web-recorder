@@ -2,6 +2,9 @@
 (function() {
   'use strict';
 
+  // 回放统计数组大小限制
+  const PLAYBACK_STATS_LIMIT = 100;
+
   // 标记脚本已加载
   console.log('[WebRecorder] injected.js 开始加载，时间:', Date.now());
   window.__webrecorder_injected_loaded = true;
@@ -892,6 +895,9 @@
     const filters = getPlaybackFilters();
     if (shouldFilterUrl(url, filters)) {
       playbackStats.filtered.push({ type: 'xhr', method, url, reason: 'url_filtered' });
+      if (playbackStats.filtered.length > PLAYBACK_STATS_LIMIT) {
+        playbackStats.filtered.shift();
+      }
       // 执行真实请求
       const xhr = new RealXMLHttpRequest();
       xhr.open(method, url);
@@ -950,11 +956,15 @@
           timestamp: Date.now(),
           cached: true
         });
+        if (playbackStats.intercepted.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.intercepted.shift();
+        }
       }, matched.duration || 0);
     } else {
       // 限制 passed 数组大小，避免内存泄漏
-      if (playbackStats.passed.length < 50) {
-        playbackStats.passed.push({ type: 'xhr', method, url, pathname: key, reason: 'no_match', cached: true });
+      playbackStats.passed.push({ type: 'xhr', method, url, pathname: key, reason: 'no_match', cached: true });
+      if (playbackStats.passed.length > PLAYBACK_STATS_LIMIT) {
+        playbackStats.passed.shift();
       }
       
       // 执行真实请求
@@ -977,6 +987,9 @@
     const filters = getPlaybackFilters();
     if (shouldFilterUrl(url, filters)) {
       playbackStats.filtered.push({ type: 'fetch', method, url, reason: 'url_filtered' });
+      if (playbackStats.filtered.length > PLAYBACK_STATS_LIMIT) {
+        playbackStats.filtered.shift();
+      }
       // 执行真实请求并 resolve 缓存的 promise
       playbackOriginalFetch(resource, init)
         .then(response => resolve(response))
@@ -1031,11 +1044,15 @@
           timestamp: Date.now(),
           cached: true
         });
+        if (playbackStats.intercepted.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.intercepted.shift();
+        }
       }, matched.duration || 0);
     } else {
       // 限制 passed 数组大小，避免内存泄漏
-      if (playbackStats.passed.length < 50) {
-        playbackStats.passed.push({ type: 'fetch', method, url, pathname: key, reason: 'no_match', cached: true });
+      playbackStats.passed.push({ type: 'fetch', method, url, pathname: key, reason: 'no_match', cached: true });
+      if (playbackStats.passed.length > PLAYBACK_STATS_LIMIT) {
+        playbackStats.passed.shift();
       }
       // 执行真实请求并 resolve 缓存的 promise
       playbackOriginalFetch(resource, init)
@@ -1525,6 +1542,9 @@
         const filters = getPlaybackFilters();
         if (shouldFilterUrl(url, filters)) {
           playbackStats.filtered.push({ type: 'xhr', method, url, reason: 'url_filtered' });
+          if (playbackStats.filtered.length > PLAYBACK_STATS_LIMIT) {
+            playbackStats.filtered.shift();
+          }
           return realXhr.open(method, url, ...args);
         }
         
@@ -1547,6 +1567,9 @@
             status: requestInfo.matched.status,
             timestamp: Date.now()
           });
+          if (playbackStats.intercepted.length > PLAYBACK_STATS_LIMIT) {
+            playbackStats.intercepted.shift();
+          }
           
           // 调用 realXhr.open() 来设置正确的状态，避免 setRequestHeader 报错
           try {
@@ -1556,8 +1579,9 @@
         }
         
         // 限制 passed 数组大小，避免内存泄漏
-        if (playbackStats.passed.length < 50) {
-          playbackStats.passed.push({ type: 'xhr', method, url, pathname: key, reason: 'no_match' });
+        playbackStats.passed.push({ type: 'xhr', method, url, pathname: key, reason: 'no_match' });
+        if (playbackStats.passed.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.passed.shift();
         }
         return realXhr.open(method, url, ...args);
       };
@@ -1634,6 +1658,9 @@
       const filters = getPlaybackFilters();
       if (shouldFilterUrl(url, filters)) {
         playbackStats.filtered.push({ type: 'fetch', method, url, reason: 'url_filtered' });
+        if (playbackStats.filtered.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.filtered.shift();
+        }
         return playbackOriginalFetch.apply(this, arguments);
       }
 
@@ -1663,10 +1690,14 @@
           status: matchedRequest.status,
           timestamp: Date.now()
         });
+        if (playbackStats.intercepted.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.intercepted.shift();
+        }
       } else {
         // 限制 passed 数组大小，避免内存泄漏
-        if (playbackStats.passed.length < 50) {
-          playbackStats.passed.push({ type: 'fetch', method, url, pathname: key, reason: 'no_match' });
+        playbackStats.passed.push({ type: 'fetch', method, url, pathname: key, reason: 'no_match' });
+        if (playbackStats.passed.length > PLAYBACK_STATS_LIMIT) {
+          playbackStats.passed.shift();
         }
       }
 

@@ -54,7 +54,8 @@ class WebRecorderDB {
       startTime: Date.now(),
       endTime: null,
       requestCount: 0,
-      snapshotCount: 0
+      snapshotCount: 0,
+      source: 'recorded'  // 标记为录制来源
     };
 
     return new Promise((resolve, reject) => {
@@ -194,8 +195,15 @@ class WebRecorderDB {
                 new Promise(r => { requestCountQuery.onsuccess = () => r(requestCountQuery.result); }),
                 new Promise(r => { snapshotCountQuery.onsuccess = () => r(snapshotCountQuery.result); })
               ]).then(([requestCount, snapshotCount]) => {
+                // 只返回基本字段，避免返回完整请求数据导致消息过大
                 resolveSession({
-                  ...session,
+                  id: session.id,
+                  title: session.title,
+                  url: session.url,
+                  startTime: session.startTime,
+                  endTime: session.endTime,
+                  source: session.source,
+                  importedAt: session.importedAt,
                   requestCount,
                   snapshotCount
                 });

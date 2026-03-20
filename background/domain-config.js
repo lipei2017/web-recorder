@@ -67,6 +67,28 @@ class DomainConfigManager {
   }
 
   /**
+   * 更新域名配置
+   */
+  async updateConfig(domainId, updates) {
+    const { domains } = await this.getConfigs();
+    const index = domains.findIndex(d => d.id === domainId);
+    
+    if (index === -1) {
+      throw new Error('域名配置不存在');
+    }
+    
+    // 更新配置
+    domains[index] = {
+      ...domains[index],
+      ...updates,
+      updatedAt: Date.now()
+    };
+    
+    await this.saveConfigs(domains);
+    return domains;
+  }
+
+  /**
    * 删除域名配置
    */
   async removeConfig(domainId) {

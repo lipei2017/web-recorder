@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tabContents = document.querySelectorAll('.tab-content');
 
   navBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const tab = btn.dataset.tab;
       
       navBtns.forEach(b => b.classList.remove('active'));
@@ -16,11 +16,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         content.classList.remove('active');
       });
       document.getElementById(`${tab}-tab`).classList.add('active');
+      
+      // 切换到记录管理页面时刷新数据
+      if (tab === 'sessions') {
+        await loadSessions();
+      }
     });
   });
 
+  // 检查 URL 参数
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetSessionId = urlParams.get('sessionId');
+  const targetTab = urlParams.get('tab');
+
   // 加载记录列表
   await loadSessions();
+
+  // 如果有指定的 tab 参数，切换到对应选项卡
+  if (targetTab) {
+    const targetBtn = document.querySelector(`.nav-btn[data-tab="${targetTab}"]`);
+    if (targetBtn) {
+      targetBtn.click();
+    }
+  }
+
+  // 如果有指定的 sessionId，切换到记录列表并打开详情
+  if (targetSessionId) {
+    // 切换到记录管理 tab
+    const sessionsBtn = document.querySelector('.nav-btn[data-tab="sessions"]');
+    if (sessionsBtn) {
+      sessionsBtn.click();
+    }
+    
+    // 延迟打开详情，确保列表已加载
+    setTimeout(() => {
+      showSessionDetail(targetSessionId);
+    }, 300);
+  }
 
   // 搜索和过滤
   const searchInput = document.getElementById('searchInput');
@@ -45,6 +77,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 导出模态框事件
   setupExportModal();
+  
+  // 编辑域名模态框事件
+  setupEditDomainModal();
 });
 
 // 加载记录列表
@@ -124,17 +159,30 @@ async function loadSessions() {
         ? `${Math.floor(duration / 60)}分${duration % 60}秒`
         : '进行中';
 
+      const isImported = session.source === 'imported';
+      const sourceIcon = isImported ? '📥' : '📹';
+      const sourceLabel = isImported ? '导入' : '录制';
+      
+      // 导入的数据显示导入时间，录制的数据显示录制时间
+      const displayTime = isImported && session.importedAt 
+        ? session.importedAt 
+        : session.startTime;
+      const displayDate = new Date(displayTime);
+      const displayDateStr = displayDate.toLocaleDateString();
+      const displayTimeStr = displayDate.toLocaleTimeString();
+
       return `
         <div class="session-card" data-session-id="${session.id}">
           <div class="session-info">
             <div class="session-title" title="${session.title || '未命名'}">
+              <span class="session-source" title="${sourceLabel}">${sourceIcon}</span>
               ${session.title || '未命名'}
             </div>
             <div class="session-url" title="${session.url}">
               ${session.url}
             </div>
             <div class="session-meta">
-              <span>📅 ${dateStr} ${timeStr}</span>
+              <span>📅 ${displayDateStr} ${displayTimeStr}</span>
               <span>⏱️ ${durationStr}</span>
               <span>📊 ${session.requestCount || 0} 请求</span>
               <span>💾 ${session.snapshotCount || 0} 快照</span>
@@ -400,7 +448,7 @@ async function showSessionDetail(sessionId) {
   const modalBody = document.getElementById('modalBody');
   const exportJsonBtn = document.getElementById('exportJsonBtn');
   const exportHarBtn = document.getElementById('exportHarBtn');
-  const playbackBtn = document.getElementById('playbackBtn');
+
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -494,9 +542,8 @@ async function showSessionDetail(sessionId) {
     modal.classList.add('active');
 
     // 绑定导出按钮
-    exportJsonBtn.onclick = () => showExportModal(sessionId, response.session);
-    exportHarBtn.onclick = () => exportSession(sessionId, 'har');
-    playbackBtn.onclick = () => startPlayback(sessionId);
+    exportJsonBtn.onclick = () => showExportModal(sessionId, response.session, 'json');
+    exportHarBtn.onclick = () => showExportModal(sessionId, response.session, 'har');
 
   } catch (error) {
     console.error('加载详情失败:', error);
@@ -568,19 +615,107 @@ async function startPlayback(sessionId) {
 // 导出配置模态框
 let currentExportSession = null;
 let currentExportSessionId = null;
+let currentExportFormat = 'json'; // 当前导出格式：'json' 或 'har'
 
-function showExportModal(sessionId, session) {
+// URL 路径匹配函数（支持通配符）
+function matchUrlPath(url, pattern) {
+  if (!pattern || pattern.trim() === '') {
+    return true; // 空模式匹配所有
+  }
+  
+  try {
+    // 提取 URL 的路径部分
+    const urlObj = new URL(url, window.location.origin);
+    const path = urlObj.pathname;
+    
+    // 将通配符模式转换为正则表达式
+    const regexPattern = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
+      .replace(/\*/g, '.*') // * 转换为 .*
+      .replace(/\?/g, '.'); // ? 转换为 .
+    
+    const regex = new RegExp(regexPattern, 'i'); // 不区分大小写
+    return regex.test(path);
+  } catch (e) {
+    // URL 解析失败，直接对完整 URL 进行匹配
+    const regexPattern = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
+    const regex = new RegExp(regexPattern, 'i');
+    return regex.test(url);
+  }
+}
+
+function showExportModal(sessionId, session, format = 'json') {
   currentExportSession = session;
   currentExportSessionId = sessionId;
+  currentExportFormat = format;
   
   const modal = document.getElementById('exportModal');
   const exportFilename = document.getElementById('exportFilename');
+  const modalTitle = document.querySelector('#exportModal .modal-header h2');
+  
+  // 根据格式设置不同的标题
+  if (format === 'har') {
+    modalTitle.textContent = '导出 HAR 配置';
+  } else {
+    modalTitle.textContent = '导出 JSON 配置';
+  }
   
   // 设置默认文件名
   const date = new Date(session.startTime);
   const dateStr = date.toISOString().split('T')[0];
   const safeTitle = (session.title || 'export').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_').substring(0, 30);
+  const ext = format === 'har' ? 'har' : 'json';
   exportFilename.value = `web-recorder-${safeTitle}-${dateStr}`;
+  
+  // 清空 URL 过滤输入框
+  document.getElementById('urlPathFilter').value = '';
+  
+  // 根据格式显示/隐藏不同的选项
+  const snapshotsCheckbox = document.getElementById('exportSnapshots');
+  const snapshotsLabel = snapshotsCheckbox.closest('label');
+  const copyJsonBtn = document.getElementById('copyJsonBtn');
+  const harSnapshotHint = document.getElementById('harSnapshotHint');
+  const formatOptionsGroup = document.getElementById('formatOptionsGroup');
+  const exportPreviewGroup = document.getElementById('exportPreviewGroup');
+  
+  if (format === 'har') {
+    // HAR 格式：隐藏快照选项、格式选项、预览区域和复制按钮，显示提示
+    snapshotsCheckbox.checked = false;
+    snapshotsLabel.style.display = 'none';
+    if (harSnapshotHint) {
+      harSnapshotHint.style.display = 'block';
+    }
+    if (formatOptionsGroup) {
+      formatOptionsGroup.style.display = 'none';
+    }
+    if (exportPreviewGroup) {
+      exportPreviewGroup.style.display = 'none';
+    }
+    if (copyJsonBtn) {
+      copyJsonBtn.style.display = 'none';
+    }
+    // HAR 不需要 session info 中的某些字段
+    document.getElementById('exportSessionInfo').checked = true;
+  } else {
+    // JSON 格式：显示所有选项，隐藏提示
+    snapshotsLabel.style.display = 'flex';
+    snapshotsCheckbox.checked = true;
+    if (harSnapshotHint) {
+      harSnapshotHint.style.display = 'none';
+    }
+    if (formatOptionsGroup) {
+      formatOptionsGroup.style.display = 'block';
+    }
+    if (exportPreviewGroup) {
+      exportPreviewGroup.style.display = 'block';
+    }
+    if (copyJsonBtn) {
+      copyJsonBtn.style.display = 'inline-flex';
+    }
+  }
   
   // 显示模态框
   modal.classList.add('active');
@@ -597,6 +732,7 @@ function updateExportPreview() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
+  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
   
   // 构建导出数据
   const exportData = {};
@@ -610,9 +746,9 @@ function updateExportPreview() {
   }
   
   if (exportRequests && currentExportSession.requests) {
-    let requests = currentExportSession.requests;
+    let requests = [...currentExportSession.requests];
     
-    // 应用过滤器
+    // 应用类型过滤器
     if (requestFilter !== 'all') {
       if (requestFilter === 'success') {
         requests = requests.filter(r => r.status >= 200 && r.status < 300);
@@ -621,6 +757,11 @@ function updateExportPreview() {
       } else {
         requests = requests.filter(r => r.type === requestFilter);
       }
+    }
+    
+    // 应用 URL 路径过滤
+    if (urlPathFilter) {
+      requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
     }
     
     exportData.requests = requests;
@@ -650,6 +791,7 @@ async function exportJSONWithConfig() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
+  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
   let filename = document.getElementById('exportFilename').value.trim();
   
   if (!filename) {
@@ -679,7 +821,7 @@ async function exportJSONWithConfig() {
     if (exportRequests && currentExportSession.requests) {
       let requests = [...currentExportSession.requests];
       
-      // 应用过滤器
+      // 应用类型过滤器
       if (requestFilter !== 'all') {
         if (requestFilter === 'success') {
           requests = requests.filter(r => r.status >= 200 && r.status < 300);
@@ -688,6 +830,11 @@ async function exportJSONWithConfig() {
         } else {
           requests = requests.filter(r => r.type === requestFilter);
         }
+      }
+      
+      // 应用 URL 路径过滤
+      if (urlPathFilter) {
+        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
       }
       
       exportData.requests = requests;
@@ -724,6 +871,228 @@ async function exportJSONWithConfig() {
   }
 }
 
+// 导出 HAR（带配置）
+async function exportHARWithConfig() {
+  if (!currentExportSession) return;
+  
+  const exportRequests = document.getElementById('exportRequests').checked;
+  const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
+  const requestFilter = document.getElementById('requestFilter').value;
+  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
+  let filename = document.getElementById('exportFilename').value.trim();
+  
+  if (!filename) {
+    const date = new Date(currentExportSession.startTime);
+    const dateStr = date.toISOString().split('T')[0];
+    const safeTitle = (currentExportSession.title || 'export').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_').substring(0, 30);
+    filename = `web-recorder-${safeTitle}-${dateStr}`;
+  }
+  
+  // 确保文件名有 .har 后缀
+  if (!filename.endsWith('.har')) {
+    filename += '.har';
+  }
+  
+  try {
+    // 构建 HAR 数据
+    const harData = {
+      log: {
+        version: '1.2',
+        creator: {
+          name: 'Web Recorder',
+          version: '1.0.0'
+        },
+        pages: [],
+        entries: []
+      }
+    };
+    
+    // 添加页面信息（如果启用）
+    if (exportSessionInfo) {
+      harData.log.pages.push({
+        startedDateTime: new Date(currentExportSession.startTime).toISOString(),
+        id: 'page_1',
+        title: currentExportSession.title || '未命名',
+        pageTimings: {
+          onContentLoad: -1,
+          onLoad: -1
+        }
+      });
+    }
+    
+    // 处理请求
+    if (exportRequests && currentExportSession.requests) {
+      let requests = [...currentExportSession.requests];
+      
+      // 只保留 HTTP 请求（XHR 和 fetch）
+      requests = requests.filter(r => r.type === 'xhr' || r.type === 'fetch');
+      
+      // 应用类型过滤器
+      if (requestFilter !== 'all') {
+        if (requestFilter === 'success') {
+          requests = requests.filter(r => r.status >= 200 && r.status < 300);
+        } else if (requestFilter === 'error') {
+          requests = requests.filter(r => r.status === 0 || r.status >= 400);
+        }
+      }
+      
+      // 应用 URL 路径过滤
+      if (urlPathFilter) {
+        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
+      }
+      
+      // 转换为 HAR entries
+      harData.log.entries = requests.map(req => {
+        const urlObj = new URL(req.url);
+        
+        // 转换 headers
+        const requestHeaders = req.headers ? Object.entries(req.headers).map(([name, value]) => ({
+          name,
+          value: String(value)
+        })) : [];
+        
+        const responseHeaders = req.responseHeaders ? Object.entries(req.responseHeaders).map(([name, value]) => ({
+          name,
+          value: String(value)
+        })) : [];
+        
+        // 转换 query string
+        const queryString = [];
+        urlObj.searchParams.forEach((value, name) => {
+          queryString.push({ name, value });
+        });
+        
+        // 构建请求体
+        let postData = null;
+        if (req.requestBody) {
+          const bodyText = typeof req.requestBody === 'string' 
+            ? req.requestBody 
+            : JSON.stringify(req.requestBody);
+          
+          // 尝试检测 mimeType
+          let mimeType = 'application/octet-stream';
+          const contentType = req.headers?.['Content-Type'] || req.headers?.['content-type'];
+          if (contentType) {
+            mimeType = contentType.split(';')[0].trim();
+          }
+          
+          postData = {
+            mimeType,
+            text: bodyText
+          };
+        }
+        
+        // 构建响应内容
+        let content = {
+          size: 0,
+          mimeType: 'text/plain',
+          text: ''
+        };
+        
+        if (req.responseBody !== null && req.responseBody !== undefined) {
+          const responseText = typeof req.responseBody === 'string'
+            ? req.responseBody
+            : JSON.stringify(req.responseBody);
+          
+          // 尝试检测 mimeType
+          let mimeType = 'text/plain';
+          const contentType = req.responseHeaders?.['Content-Type'] || req.responseHeaders?.['content-type'];
+          if (contentType) {
+            mimeType = contentType.split(';')[0].trim();
+          }
+          
+          content = {
+            size: responseText.length,
+            mimeType,
+            text: responseText
+          };
+        }
+        
+        return {
+          startedDateTime: new Date(req.timestamp).toISOString(),
+          time: req.duration || 0,
+          request: {
+            method: req.method,
+            url: req.url,
+            httpVersion: 'HTTP/1.1',
+            headers: requestHeaders,
+            queryString: queryString,
+            postData: postData,
+            headersSize: -1,
+            bodySize: postData ? postData.text.length : 0
+          },
+          response: {
+            status: req.status || 0,
+            statusText: getStatusText(req.status),
+            httpVersion: 'HTTP/1.1',
+            headers: responseHeaders,
+            content: content,
+            redirectURL: '',
+            headersSize: -1,
+            bodySize: content.size
+          },
+          cache: {},
+          timings: {
+            blocked: -1,
+            dns: -1,
+            connect: -1,
+            send: 0,
+            wait: req.duration || 0,
+            receive: 0,
+            ssl: -1
+          },
+          connection: '',
+          pageref: exportSessionInfo ? 'page_1' : undefined
+        };
+      });
+    }
+    
+    const harString = JSON.stringify(harData, null, 2);
+    
+    // 创建 Blob 并下载
+    const blob = new Blob([harString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    URL.revokeObjectURL(url);
+    
+    // 关闭模态框
+    document.getElementById('exportModal').classList.remove('active');
+    
+    alert('HAR 导出成功！');
+  } catch (error) {
+    console.error('HAR 导出失败:', error);
+    alert('HAR 导出失败: ' + error.message);
+  }
+}
+
+// 获取 HTTP 状态文本
+function getStatusText(status) {
+  const statusMap = {
+    200: 'OK',
+    201: 'Created',
+    204: 'No Content',
+    301: 'Moved Permanently',
+    302: 'Found',
+    304: 'Not Modified',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    405: 'Method Not Allowed',
+    500: 'Internal Server Error',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable'
+  };
+  return statusMap[status] || '';
+}
+
 // 复制 JSON 到剪贴板
 async function copyJSONToClipboard() {
   if (!currentExportSession) return;
@@ -733,6 +1102,7 @@ async function copyJSONToClipboard() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
+  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
   
   try {
     // 构建导出数据
@@ -749,7 +1119,7 @@ async function copyJSONToClipboard() {
     if (exportRequests && currentExportSession.requests) {
       let requests = [...currentExportSession.requests];
       
-      // 应用过滤器
+      // 应用类型过滤器
       if (requestFilter !== 'all') {
         if (requestFilter === 'success') {
           requests = requests.filter(r => r.status >= 200 && r.status < 300);
@@ -758,6 +1128,11 @@ async function copyJSONToClipboard() {
         } else {
           requests = requests.filter(r => r.type === requestFilter);
         }
+      }
+      
+      // 应用 URL 路径过滤
+      if (urlPathFilter) {
+        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
       }
       
       exportData.requests = requests;
@@ -788,6 +1163,7 @@ function setupExportModal() {
   const exportSnapshots = document.getElementById('exportSnapshots');
   const exportSessionInfo = document.getElementById('exportSessionInfo');
   const requestFilter = document.getElementById('requestFilter');
+  const urlPathFilter = document.getElementById('urlPathFilter');
   const jsonFormatRadios = document.querySelectorAll('input[name="jsonFormat"]');
   
   // 关闭按钮
@@ -809,15 +1185,55 @@ function setupExportModal() {
   exportSnapshots.addEventListener('change', updatePreview);
   exportSessionInfo.addEventListener('change', updatePreview);
   requestFilter.addEventListener('change', updatePreview);
+  urlPathFilter.addEventListener('input', updatePreview);
   jsonFormatRadios.forEach(radio => radio.addEventListener('change', updatePreview));
   
   // 导出按钮
-  document.getElementById('confirmExportBtn').onclick = exportJSONWithConfig;
+  document.getElementById('confirmExportBtn').onclick = () => {
+    if (currentExportFormat === 'har') {
+      exportHARWithConfig();
+    } else {
+      exportJSONWithConfig();
+    }
+  };
   document.getElementById('copyJsonBtn').onclick = copyJSONToClipboard;
+}
+
+// 自动清理设置
+function setupAutoCleanup() {
+  const autoCleanupCheckbox = document.getElementById('autoCleanup');
+  if (!autoCleanupCheckbox) return;
+
+  // 加载保存的设置
+  loadAutoCleanupSetting();
+
+  // 监听复选框变化
+  autoCleanupCheckbox.addEventListener('change', async () => {
+    try {
+      await chrome.storage.local.set({
+        autoCleanup: autoCleanupCheckbox.checked
+      });
+      console.log('[Options] 自动清理设置已保存:', autoCleanupCheckbox.checked);
+    } catch (error) {
+      console.error('保存自动清理设置失败:', error);
+    }
+  });
+
+  async function loadAutoCleanupSetting() {
+    try {
+      const result = await chrome.storage.local.get(['autoCleanup']);
+      autoCleanupCheckbox.checked = result.autoCleanup || false;
+    } catch (error) {
+      console.error('加载自动清理设置失败:', error);
+    }
+  }
 }
 
 // 设置页面
 function setupSettings() {
+  // 自动清理设置
+  setupAutoCleanup();
+
   // 清除所有记录
   document.getElementById('clearAllBtn').addEventListener('click', async () => {
     if (confirm('确定要清除所有记录吗？此操作不可撤销。')) {
@@ -1208,7 +1624,7 @@ async function loadDomainConfigs() {
     // 渲染域名列表
     domainList.innerHTML = domains.map(domain => `
       <div style="background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
+        <div style="flex: 1;">
           <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">
             ${domain.domain}
             <span style="font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; ${getModeStyle(domain.mode)}">
@@ -1217,14 +1633,30 @@ async function loadDomainConfigs() {
           </div>
           ${domain.description ? `<div style="font-size: 12px; color: #666;">${domain.description}</div>` : ''}
         </div>
-        <button class="btn btn-danger" data-domain-id="${domain.id}" style="padding: 6px 12px; font-size: 12px;">
-          删除
-        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-edit-domain" data-domain-id="${domain.id}" style="padding: 6px 12px; font-size: 12px;">
+            编辑
+          </button>
+          <button class="btn btn-danger btn-delete-domain" data-domain-id="${domain.id}" style="padding: 6px 12px; font-size: 12px;">
+            删除
+          </button>
+        </div>
       </div>
     `).join('');
 
+    // 绑定编辑按钮事件
+    domainList.querySelectorAll('.btn-edit-domain').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const domainId = btn.dataset.domainId;
+        const domain = domains.find(d => d.id === domainId);
+        if (domain) {
+          showEditDomainModal(domain);
+        }
+      });
+    });
+
     // 绑定删除按钮事件
-    domainList.querySelectorAll('.btn-danger').forEach(btn => {
+    domainList.querySelectorAll('.btn-delete-domain').forEach(btn => {
       btn.addEventListener('click', async () => {
         const domainId = btn.dataset.domainId;
         if (confirm('确定要删除这个域名配置吗？')) {
@@ -1278,6 +1710,94 @@ function getModeStyle(mode) {
     'playback': 'background: #28a745; color: white;'
   };
   return styleMap[mode] || '';
+}
+
+// 显示编辑域名模态框
+let currentEditDomain = null;
+
+function showEditDomainModal(domain) {
+  currentEditDomain = domain;
+  
+  const modal = document.getElementById('editDomainModal');
+  const patternInput = document.getElementById('editDomainPattern');
+  const descInput = document.getElementById('editDomainDesc');
+  const modeRadios = document.querySelectorAll('input[name="editDomainMode"]');
+  
+  // 填充当前值
+  patternInput.value = domain.domain;
+  descInput.value = domain.description || '';
+  
+  // 设置模式单选按钮
+  modeRadios.forEach(radio => {
+    radio.checked = radio.value === domain.mode;
+  });
+  
+  // 显示模态框
+  modal.classList.add('active');
+}
+
+// 保存编辑的域名配置
+async function saveEditedDomain() {
+  if (!currentEditDomain) return;
+  
+  const descInput = document.getElementById('editDomainDesc');
+  const modeRadio = document.querySelector('input[name="editDomainMode"]:checked');
+  
+  const description = descInput.value.trim();
+  const mode = modeRadio ? modeRadio.value : 'both';
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'UPDATE_DOMAIN_CONFIG',
+      domainId: currentEditDomain.id,
+      updates: {
+        description: description,
+        mode: mode
+      }
+    });
+    
+    if (response.success) {
+      showNotification('域名配置已更新', 'success');
+      document.getElementById('editDomainModal').classList.remove('active');
+      await loadDomainConfigs();
+    } else {
+      showNotification(response.error || '更新失败', 'error');
+    }
+  } catch (error) {
+    console.error('更新域名配置失败:', error);
+    showNotification('更新失败', 'error');
+  }
+}
+
+// 设置编辑域名模态框事件
+function setupEditDomainModal() {
+  const modal = document.getElementById('editDomainModal');
+  const closeBtn = document.getElementById('editDomainModalClose');
+  const cancelBtn = document.getElementById('cancelEditDomainBtn');
+  const saveBtn = document.getElementById('saveEditDomainBtn');
+  
+  // 关闭按钮
+  closeBtn.onclick = () => {
+    modal.classList.remove('active');
+    currentEditDomain = null;
+  };
+  
+  // 取消按钮
+  cancelBtn.onclick = () => {
+    modal.classList.remove('active');
+    currentEditDomain = null;
+  };
+  
+  // 保存按钮
+  saveBtn.onclick = saveEditedDomain;
+  
+  // 点击背景关闭
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('active');
+      currentEditDomain = null;
+    }
+  };
 }
 
 // 显示通知
