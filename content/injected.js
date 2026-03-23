@@ -55,33 +55,45 @@
       }
     },
     getAllMessages(url) {
-      // 1. 精确匹配
+      let messages = null;
+      
+      // 1. 精确匹配（完整 URL）
       if (this.messagesByUrl.has(url)) {
-        return this.messagesByUrl.get(url);
+        messages = this.messagesByUrl.get(url);
+        console.log(`[WebSocket回放] 精确匹配: ${url}`);
       }
       
-      // 2. 忽略查询参数匹配
-      try {
-        const urlObj = new URL(url);
-        const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
-        
-        for (const [recordedUrl, messages] of this.messagesByUrl.entries()) {
-          try {
-            const recordedUrlObj = new URL(recordedUrl);
-            const recordedBaseUrl = `${recordedUrlObj.protocol}//${recordedUrlObj.host}${recordedUrlObj.pathname}`;
-            
-            if (baseUrl === recordedBaseUrl) {
-              return messages;
-            }
-          } catch (e) {}
-        }
-      } catch (e) {}
+      // 2. 路径匹配（忽略查询参数）
+      if (!messages) {
+        try {
+          const urlObj = new URL(url);
+          const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
+          
+          for (const [recordedUrl, msgs] of this.messagesByUrl.entries()) {
+            try {
+              const recordedUrlObj = new URL(recordedUrl);
+              const recordedBaseUrl = `${recordedUrlObj.protocol}//${recordedUrlObj.host}${recordedUrlObj.pathname}`;
+              
+              if (baseUrl === recordedBaseUrl) {
+                messages = msgs;
+                console.log(`[WebSocket回放] 路径匹配: ${url} -> ${recordedUrl}`);
+                break;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
       
       // 3. 如果只有一个录制URL，直接使用
-      if (this.messagesByUrl.size === 1) {
-        const [recordedUrl, messages] = Array.from(this.messagesByUrl.entries())[0];
+      if (!messages && this.messagesByUrl.size === 1) {
+        const [recordedUrl, msgs] = Array.from(this.messagesByUrl.entries())[0];
         console.log(`[WebSocket回放] 使用唯一录制URL: ${recordedUrl}`);
-        return messages;
+        messages = msgs;
+      }
+      
+      // 返回消息数组的深拷贝，确保每个连接都有独立的副本
+      if (messages && messages.length > 0) {
+        return messages.map(msg => ({...msg}));
       }
       
       return null;
@@ -204,7 +216,10 @@
     if (shouldUsePlayback) {
       const messages = WebSocketPlaybackManager.getAllMessages(url);
       if (messages && messages.length > 0) {
+        console.log(`[WebSocket回放] 为连接创建代理: ${url}, 消息数: ${messages.length}`);
         return createHijackedWebSocket(url, protocols, messages);
+      } else {
+        console.log(`[WebSocket回放] 未找到录制数据: ${url}`);
       }
     }
     
@@ -273,36 +288,6 @@
   window.WebSocket.OPEN = OriginalWebSocket.OPEN;
   window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
   window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
-  
-  // ==================== 劫持 WebSocket send 方法（仅用于录制）====================
-  const originalWebSocketSend = WebSocket.prototype.send;
-  WebSocket.prototype.send = function(data) {
-    const ws = this;
-    const wsUrl = this.url;
-    
-    // 录制模式：捕获发送的消息
-    if (isCapturing) {
-      WebSocketTracker.add(this);
-      if (typeof captureRequest === 'function') {
-        captureRequest({
-          type: 'websocket',
-          method: 'SEND',
-          url: wsUrl,
-          headers: {},
-          requestBody: typeof data === 'string' ? data : JSON.stringify(data),
-          status: null,
-          responseHeaders: {},
-          responseBody: null,
-          direction: 'outgoing',
-          timestamp: Date.now()
-        });
-      }
-    }
-    
-    return originalWebSocketSend.call(this, data);
-  };
-  
-  // 注意：isPlayingBack, playbackStats, WebSocketPlaybackManager, WebSocketTracker 等变量已在脚本开头定义
   
   // WebSocket 实例追踪器和回放数据
   const WebSocketTracker = {
@@ -386,6 +371,7 @@
       processPendingRequests();
       // 显示录制指示器
       showRecordingIndicator();
+      console.log('[WebSocket录制] 录制已开始，现有连接数:', WebSocketTracker.instances.size);
     }
 
     if (event.data.type === 'WEBRECORDER_STOP_CAPTURE') {
@@ -2001,17 +1987,30 @@
       
       // send 方法
       send(data) {
+        // 检查代理状态
+        if (this.readyState === WebSocket.CLOSED || this.readyState === WebSocket.CLOSING) {
+          throw new Error('WebSocket is already in CLOSING or CLOSED state');
+        }
+        
+        // 等待真实 WebSocket 连接
         if (realWs.readyState === WebSocket.OPEN) {
           return realWs.send(data);
         } else if (realWs.readyState === WebSocket.CONNECTING) {
+          // 延迟发送，直到连接建立
           const sendWhenReady = () => {
             if (realWs.readyState === WebSocket.OPEN) {
-              realWs.send(data);
+              try {
+                realWs.send(data);
+              } catch (e) {
+                console.error('[WebSocket代理] 发送消息失败:', e);
+              }
             } else if (realWs.readyState === WebSocket.CONNECTING) {
               setTimeout(sendWhenReady, 50);
             }
           };
           setTimeout(sendWhenReady, 50);
+        } else {
+          console.warn('[WebSocket代理] 无法发送消息，连接状态:', realWs.readyState);
         }
       },
       
@@ -2033,6 +2032,7 @@
         if (!this._messagesPushing) {
           this._messagesPushing = true;
           this._messageIndex = 0;
+          console.log(`[WebSocket回放] 开始推送消息: ${url}, 总消息数: ${messages.length}`);
           this._pushNextMessage();
         }
       },
@@ -2088,13 +2088,21 @@
     };
     
     realWs.onopen = function(event) {
-      proxy.readyState = WebSocket.OPEN;
-      if (proxy._hijackedOnOpen) {
-        try {
-          proxy._hijackedOnOpen.call(proxy, event);
-        } catch (e) {}
+      // 确保真实 WebSocket 已打开
+      if (realWs.readyState === WebSocket.OPEN) {
+        proxy.readyState = WebSocket.OPEN;
+        if (proxy._hijackedOnOpen) {
+          try {
+            proxy._hijackedOnOpen.call(proxy, event);
+          } catch (e) {
+            console.error('[WebSocket代理] onopen 回调执行失败:', e);
+          }
+        }
+        proxy._startPushingMessages();
+      } else {
+        // 如果还没打开，等待一下再试
+        setTimeout(() => realWs.onopen(event), 10);
       }
-      proxy._startPushingMessages();
     };
     
     realWs.onclose = function(event) {
