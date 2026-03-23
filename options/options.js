@@ -826,10 +826,10 @@ function updateExportPreview() {
     exportData.snapshotCount = currentExportSession.snapshots.length;
   }
   
-  // 生成预览（只显示前 500 个字符）
+  // 生成预览（只显示前 3000 个字符）
   let preview = JSON.stringify(exportData, null, formatCompact ? 0 : 2);
-  if (preview.length > 500) {
-    preview = preview.substring(0, 500) + '\n... (共 ' + preview.length + ' 字符)';
+  if (preview.length > 3000) {
+    preview = preview.substring(0, 3000) + '\n... (共 ' + preview.length + ' 字符)';
   }
   
   document.getElementById('exportPreview').textContent = preview;
