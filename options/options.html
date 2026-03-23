@@ -424,10 +424,17 @@
             </select>
             
             <label style="display: block; font-size: 13px; margin-bottom: 4px; margin-top: 12px;">URL 路径过滤（可选）</label>
-            <input type="text" id="urlPathFilter" placeholder="例如: /api/user 或 *compose* (支持通配符)" 
-              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
-            <small style="color: #666; display: block; margin-top: 4px;">
-              支持通配符 * 匹配任意字符，留空则不过滤。例如：/api/* 或 *user*
+            <div id="urlPathFilters">
+              <div class="url-filter-item" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" class="url-path-filter-input" placeholder="例如: /api/user 或 *compose* (支持通配符)" 
+                  style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+              </div>
+            </div>
+            <button type="button" id="addUrlFilterBtn" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px; margin-top: 4px;">
+              + 添加路径
+            </button>
+            <small style="color: #666; display: block; margin-top: 8px;">
+              支持通配符 * 匹配任意字符，多个路径会匹配任意一个。例如：/api/* 或 *user*
             </small>
           </div>
         </div>

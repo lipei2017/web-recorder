@@ -5,56 +5,64 @@ let sessionId = null;
 let isScriptInjected = false;
 
 // 检查是否需要恢复回放状态
-function checkAndRestorePlayback() {
-  console.log('[Content] 检查回放状态恢复...');
+// 返回 Promise<boolean> - 是否成功恢复了回放状态
+async function checkAndRestorePlayback() {
   try {
     const playbackData = sessionStorage.getItem('webrecorder_playback');
-    console.log('[Content] playbackData:', playbackData ? '存在' : '不存在');
-    if (!playbackData) return;
+    if (!playbackData) return false;
     
     const parsed = JSON.parse(playbackData);
-    console.log('[Content] 解析数据:', { hasSessionData: !!parsed.sessionData, sessionId: parsed.sessionId });
     
-    // 如果数据包含完整 sessionData，说明 injected.js 会自动恢复，不需要 content script 干预
+    // 如果数据包含完整 sessionData，说明 injected.js 会自动恢复
+    // 但我们需要确保脚本已注入，并且清理录制状态
     if (parsed.sessionData) {
-      console.log('[Content] 检测到完整回放数据，injected.js 会自动恢复，跳过');
-      return;
+      // 清理录制状态，避免冲突
+      try {
+        await chrome.storage.local.remove('recordingState');
+        sessionStorage.removeItem('webrecorder_recording');
+      } catch (e) {}
+      
+      // 确保脚本已注入
+      if (!isScriptInjected) {
+        await injectScript();
+      }
+      
+      // 启动回放（不保存到 storage，因为已经存在）
+      startPlayback(parsed.sessionData, false);
+      return true;
     }
     
     // 只有 sessionId，需要从 background 获取完整数据
     const { sessionId: savedSessionId, timestamp } = parsed;
-    console.log('[Content] 找到回放状态, sessionId:', savedSessionId);
     
     // 检查是否在5分钟内（避免过期的回放状态）
     if (Date.now() - timestamp >= 5 * 60 * 1000) {
-      console.log('[Content] 回放状态已过期');
       sessionStorage.removeItem('webrecorder_playback');
-      return;
+      return false;
     }
     
-    console.log('[Content] 回放状态未过期，从 background 获取会话...');
-    // 从 background 获取会话数据
-    chrome.runtime.sendMessage({
-      type: 'GET_SESSION',
-      sessionId: savedSessionId
-    }, async (response) => {
-      console.log('[Content] GET_SESSION 响应:', response);
-      if (response.success && response.session) {
-        console.log('[Content] 获取会话成功，等待脚本注入...');
-        // 确保脚本已注入
-        if (!isScriptInjected) {
-          console.log('[Content] 脚本未注入，先注入脚本...');
-          await injectScript();
+    // 使用 Promise 包装 sendMessage 以便使用 async/await
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        type: 'GET_SESSION',
+        sessionId: savedSessionId
+      }, async (response) => {
+        if (response.success && response.session) {
+          // 确保脚本已注入
+          if (!isScriptInjected) {
+            await injectScript();
+          }
+          startPlayback(response.session, false);
+          resolve(true);
+        } else {
+          sessionStorage.removeItem('webrecorder_playback');
+          resolve(false);
         }
-        console.log('[Content] 脚本注入完成，启动回放...');
-        startPlayback(response.session, false);
-      } else {
-        console.log('[Content] 获取会话失败，清除回放状态');
-        sessionStorage.removeItem('webrecorder_playback');
-      }
+      });
     });
   } catch (error) {
     console.error('[Content] 检查回放状态失败:', error);
+    return false;
   }
 }
 
@@ -218,10 +226,11 @@ function injectScript() {
 // 因为在页面刷新时，sessionStorage 中的回放标记仍然存在
 // 这样 injected.js 加载后能立即读取到回放状态
 setTimeout(async () => {
-  // 优先检查录制状态，如果没有再进行回放状态检查
-  const isRecordingRestored = await checkAndRestoreRecording();
-  if (!isRecordingRestored) {
-    checkAndRestorePlayback();
+  // 修复：优先检查回放状态，因为回放通常是临时性的，且不应该被录制状态覆盖
+  const isPlaybackRestored = await checkAndRestorePlayback();
+  if (!isPlaybackRestored) {
+    // 如果没有回放状态，再检查录制状态
+    await checkAndRestoreRecording();
   }
 }, 100);
 
@@ -300,28 +309,20 @@ function stopCapture() {
 }
 
 async function startPlayback(session, saveToStorage = true) {
-  console.log('[Content] startPlayback 被调用, session.id:', session?.id, 'saveToStorage:', saveToStorage);
-  
   // 关键修复：确保清除录制状态，避免刷新后错误恢复录制
   try {
     await chrome.storage.local.remove('recordingState');
     sessionStorage.removeItem('webrecorder_recording');
-    console.log('[Content] 已清除录制状态');
   } catch (e) {
     console.warn('[Content] 清除录制状态失败:', e);
   }
   
   if (!isScriptInjected) {
-    console.log('[Content] 脚本未注入，先注入脚本...');
     await injectScript();
-    console.log('[Content] 脚本注入完成');
-  } else {
-    console.log('[Content] 脚本已注入');
   }
 
   // 保存回放状态到 sessionStorage（如果需要）
   if (saveToStorage) {
-    console.log('[Content] 保存回放状态到 sessionStorage...');
     try {
       // 检查数据大小
       const sessionDataStr = JSON.stringify(session);
@@ -353,7 +354,6 @@ async function startPlayback(session, saveToStorage = true) {
         const localStorageFilters = result.localStorageFilters || [];
         sessionStorage.setItem('webrecorder_localstorage_filters', JSON.stringify(localStorageFilters));
       });
-      console.log('[Content] 回放状态已保存');
     } catch (error) {
       console.error('[Content] 保存回放状态失败:', error);
       // 如果保存失败（可能是数据太大），至少保存 sessionId
@@ -368,14 +368,12 @@ async function startPlayback(session, saveToStorage = true) {
     }
   }
 
-  console.log('[Content] 发送 WEBRECORDER_START_PLAYBACK 消息到 injected.js');
   setTimeout(() => {
     window.postMessage({
       source: 'WEBRECORDER_CONTENT_SCRIPT',
       type: 'WEBRECORDER_START_PLAYBACK',
       session: session
     }, '*');
-    console.log('[Content] 消息已发送');
   }, 100);
 }
 

@@ -647,8 +647,60 @@ function matchUrlPath(url, pattern) {
   }
 }
 
+// 获取所有 URL 路径过滤条件
+function getUrlPathFilters() {
+  const inputs = document.querySelectorAll('.url-path-filter-input');
+  const filters = [];
+  inputs.forEach(input => {
+    const value = input.value.trim();
+    if (value) {
+      filters.push(value);
+    }
+  });
+  return filters;
+}
+
+// 检查 URL 是否匹配任意一个路径过滤条件
+function matchAnyUrlPath(url, patterns) {
+  if (!patterns || patterns.length === 0) {
+    return true; // 没有过滤条件，匹配所有
+  }
+  // 只要匹配任意一个模式就返回 true
+  return patterns.some(pattern => matchUrlPath(url, pattern));
+}
+
+// 添加 URL 路径过滤输入框
+function addUrlPathFilterInput(value = '') {
+  const container = document.getElementById('urlPathFilters');
+  const div = document.createElement('div');
+  div.className = 'url-filter-item';
+  div.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px;';
+  div.innerHTML = `
+    <input type="text" class="url-path-filter-input" placeholder="例如: /api/user 或 *compose* (支持通配符)" 
+      style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" value="${value}">
+    <button type="button" class="btn btn-secondary remove-url-filter" style="padding: 4px 12px; font-size: 12px;">删除</button>
+  `;
+  container.appendChild(div);
+  
+  // 绑定删除按钮事件
+  div.querySelector('.remove-url-filter').addEventListener('click', function() {
+    div.remove();
+    updateExportPreview();
+  });
+  
+  // 绑定输入事件，实时更新预览
+  div.querySelector('.url-path-filter-input').addEventListener('input', updateExportPreview);
+}
+
+// 清空所有 URL 路径过滤
+function clearUrlPathFilters() {
+  const container = document.getElementById('urlPathFilters');
+  container.innerHTML = '';
+  // 添加一个空的输入框
+  addUrlPathFilterInput();
+}
+
 function showExportModal(sessionId, session, format = 'json') {
-  console.log('[Export] 打开导出模态框:', { sessionId, format, requestsCount: session?.requests?.length || 0, session });
   currentExportSession = session;
   currentExportSessionId = sessionId;
   currentExportFormat = format;
@@ -672,7 +724,7 @@ function showExportModal(sessionId, session, format = 'json') {
   exportFilename.value = `web-recorder-${safeTitle}-${dateStr}`;
   
   // 清空 URL 过滤输入框
-  document.getElementById('urlPathFilter').value = '';
+  clearUrlPathFilters();
   
   // 根据格式显示/隐藏不同的选项
   const snapshotsCheckbox = document.getElementById('exportSnapshots');
@@ -733,7 +785,7 @@ function updateExportPreview() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
-  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
+  const urlPathFilters = getUrlPathFilters();
   
   // 构建导出数据
   const exportData = {};
@@ -761,8 +813,8 @@ function updateExportPreview() {
     }
     
     // 应用 URL 路径过滤
-    if (urlPathFilter) {
-      requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
+    if (urlPathFilters.length > 0) {
+      requests = requests.filter(r => matchAnyUrlPath(r.url, urlPathFilters));
     }
     
     exportData.requests = requests;
@@ -785,10 +837,7 @@ function updateExportPreview() {
 
 // 导出 JSON（带配置）
 async function exportJSONWithConfig() {
-  console.log('[Export] 开始导出，currentExportSession:', currentExportSession);
-  
   if (!currentExportSession) {
-    console.error('[Export] 错误：currentExportSession 为空');
     alert('导出失败：未选择会话');
     return;
   }
@@ -798,11 +847,8 @@ async function exportJSONWithConfig() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
-  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
+  const urlPathFilters = getUrlPathFilters();
   let filename = document.getElementById('exportFilename').value.trim();
-  
-  console.log('[Export] 导出选项:', { exportRequests, exportSnapshots, exportSessionInfo, requestFilter, urlPathFilter });
-  console.log('[Export] 原始请求数量:', currentExportSession.requests?.length || 0);
   
   if (!filename) {
     const date = new Date(currentExportSession.startTime);
@@ -830,11 +876,9 @@ async function exportJSONWithConfig() {
     
     if (exportRequests && currentExportSession.requests) {
       let requests = [...currentExportSession.requests];
-      console.log('[Export] 复制后请求数量:', requests.length);
       
       // 应用类型过滤器
       if (requestFilter !== 'all') {
-        const beforeFilter = requests.length;
         if (requestFilter === 'success') {
           requests = requests.filter(r => r.status >= 200 && r.status < 300);
         } else if (requestFilter === 'error') {
@@ -842,21 +886,15 @@ async function exportJSONWithConfig() {
         } else {
           requests = requests.filter(r => r.type === requestFilter);
         }
-        console.log('[Export] 类型过滤后:', requests.length, '(过滤前:', beforeFilter, ')');
       }
       
       // 应用 URL 路径过滤
-      if (urlPathFilter) {
-        const beforeFilter = requests.length;
-        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
-        console.log('[Export] URL过滤后:', requests.length, '(过滤前:', beforeFilter, ')');
+      if (urlPathFilters.length > 0) {
+        requests = requests.filter(r => matchAnyUrlPath(r.url, urlPathFilters));
       }
       
       exportData.requests = requests;
       exportData.requestCount = requests.length;
-      console.log('[Export] 最终导出请求数量:', requests.length);
-    } else {
-      console.log('[Export] 未导出请求:', { exportRequests, hasRequests: !!currentExportSession.requests });
     }
     
     if (exportSnapshots && currentExportSession.snapshots) {
@@ -896,7 +934,7 @@ async function exportHARWithConfig() {
   const exportRequests = document.getElementById('exportRequests').checked;
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const requestFilter = document.getElementById('requestFilter').value;
-  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
+  const urlPathFilters = getUrlPathFilters();
   let filename = document.getElementById('exportFilename').value.trim();
   
   if (!filename) {
@@ -955,8 +993,8 @@ async function exportHARWithConfig() {
       }
       
       // 应用 URL 路径过滤
-      if (urlPathFilter) {
-        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
+      if (urlPathFilters.length > 0) {
+        requests = requests.filter(r => matchAnyUrlPath(r.url, urlPathFilters));
       }
       
       // 转换为 HAR entries
@@ -1120,7 +1158,7 @@ async function copyJSONToClipboard() {
   const exportSessionInfo = document.getElementById('exportSessionInfo').checked;
   const formatCompact = document.querySelector('input[name="jsonFormat"]:checked').value === 'compact';
   const requestFilter = document.getElementById('requestFilter').value;
-  const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
+  const urlPathFilters = getUrlPathFilters();
   
   try {
     // 构建导出数据
@@ -1149,8 +1187,8 @@ async function copyJSONToClipboard() {
       }
       
       // 应用 URL 路径过滤
-      if (urlPathFilter) {
-        requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
+      if (urlPathFilters.length > 0) {
+        requests = requests.filter(r => matchAnyUrlPath(r.url, urlPathFilters));
       }
       
       exportData.requests = requests;
@@ -1181,7 +1219,7 @@ function setupExportModal() {
   const exportSnapshots = document.getElementById('exportSnapshots');
   const exportSessionInfo = document.getElementById('exportSessionInfo');
   const requestFilter = document.getElementById('requestFilter');
-  const urlPathFilter = document.getElementById('urlPathFilter');
+  const addUrlFilterBtn = document.getElementById('addUrlFilterBtn');
   const jsonFormatRadios = document.querySelectorAll('input[name="jsonFormat"]');
   
   // 关闭按钮
@@ -1203,8 +1241,14 @@ function setupExportModal() {
   exportSnapshots.addEventListener('change', updatePreview);
   exportSessionInfo.addEventListener('change', updatePreview);
   requestFilter.addEventListener('change', updatePreview);
-  urlPathFilter.addEventListener('input', updatePreview);
   jsonFormatRadios.forEach(radio => radio.addEventListener('change', updatePreview));
+  
+  // 添加路径按钮
+  if (addUrlFilterBtn) {
+    addUrlFilterBtn.onclick = () => {
+      addUrlPathFilterInput();
+    };
+  }
   
   // 导出按钮
   document.getElementById('confirmExportBtn').onclick = () => {

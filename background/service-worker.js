@@ -33,7 +33,6 @@ function setupAutoCleanupAlarm() {
 // 监听 alarm
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'autoCleanup') {
-    console.log('[Service Worker] 执行自动清理检查');
     await runAutoCleanup();
   }
 });
@@ -44,7 +43,6 @@ async function runAutoCleanup() {
     // 检查是否启用了自动清理
     const result = await chrome.storage.local.get(['autoCleanup']);
     if (!result.autoCleanup) {
-      console.log('[Service Worker] 自动清理未启用，跳过');
       return;
     }
 
@@ -61,14 +59,7 @@ async function runAutoCleanup() {
       if (session.startTime < cutoffTime) {
         await db.deleteSession(session.id);
         deletedCount++;
-        console.log(`[Service Worker] 自动清理: 删除会话 ${session.id} (${session.title || '未命名'})`);
       }
-    }
-    
-    if (deletedCount > 0) {
-      console.log(`[Service Worker] 自动清理完成: 删除了 ${deletedCount} 条旧记录`);
-    } else {
-      console.log('[Service Worker] 自动清理: 没有需要删除的旧记录');
     }
   } catch (error) {
     console.error('[Service Worker] 自动清理失败:', error);
@@ -77,8 +68,6 @@ async function runAutoCleanup() {
 
 // 监听消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Service Worker] 收到消息:', message.type);
-
   switch (message.type) {
     case 'START_RECORDING':
       handleStartRecording(message.tab, sendResponse);
@@ -855,16 +844,19 @@ async function handleImportSession(sessionData, sendResponse) {
   try {
     await db.init();
 
+    // 生成新的会话ID，避免冲突
+    const newSessionId = db.generateId();
+    
     // 准备会话数据
     const session = {
-      id: sessionData.id,
+      id: newSessionId,
       title: sessionData.title,
       url: sessionData.url,
       startTime: sessionData.startTime,
       endTime: sessionData.endTime,
-      importedAt: sessionData.importedAt || Date.now(),
-      requestCount: sessionData.requestCount || 0,
-      snapshotCount: sessionData.snapshotCount || 0,
+      importedAt: Date.now(),
+      requestCount: sessionData.requests?.length || 0,
+      snapshotCount: sessionData.snapshots?.length || 0,
       source: 'imported'
     };
 
@@ -879,30 +871,50 @@ async function handleImportSession(sessionData, sendResponse) {
 
     // 保存请求到 requests 表
     if (sessionData.requests && sessionData.requests.length > 0) {
+      let successCount = 0;
+      let failCount = 0;
+      
       await new Promise((resolve, reject) => {
         const transaction = db.db.transaction(['requests'], 'readwrite');
         const store = transaction.objectStore('requests');
         
-        let completed = 0;
         const total = sessionData.requests.length;
         
-        sessionData.requests.forEach((reqData) => {
-          // 删除原始数据中的 id 和 sessionId，避免冲突
-          const { id: originalId, sessionId: originalSessionId, ...restData } = reqData;
-          
+        sessionData.requests.forEach((reqData, index) => {
+          // 显式列出所有需要的字段，避免数据丢失
+          // 注意：WebSocket 消息有 direction 字段（incoming/outgoing）
           const request = {
-            id: originalId || db.generateId(),
-            sessionId: session.id,
-            ...restData,
-            timestamp: reqData.timestamp || Date.now()
+            id: db.generateId(),
+            sessionId: newSessionId,
+            type: reqData.type,
+            method: reqData.method,
+            url: reqData.url,
+            headers: reqData.headers || {},
+            requestBody: reqData.requestBody,
+            status: reqData.status,
+            responseHeaders: reqData.responseHeaders || {},
+            responseBody: reqData.responseBody,
+            duration: reqData.duration,
+            timestamp: reqData.timestamp || Date.now(),
+            // WebSocket 特有字段
+            direction: reqData.direction
           };
+          
+          // 保留 WebSocket 消息 direction 日志用于调试
+          if (reqData.type === 'websocket') {
+            console.log(`[Import] WebSocket 消息 ${index}: direction=${request.direction}, url=${request.url?.substring(0, 50)}...`);
+          }
           
           const req = store.add(request);
           req.onsuccess = () => {
-            completed++;
-            if (completed === total) resolve();
+            successCount++;
+            if (successCount + failCount === total) resolve();
           };
-          req.onerror = () => reject(req.error);
+          req.onerror = (e) => {
+            failCount++;
+            console.error(`[Import] 请求 ${index} 保存失败:`, e.target.error);
+            if (successCount + failCount === total) resolve();
+          };
         });
         
         if (total === 0) resolve();
@@ -911,40 +923,45 @@ async function handleImportSession(sessionData, sendResponse) {
 
     // 保存快照到 snapshots 表
     if (sessionData.snapshots && sessionData.snapshots.length > 0) {
+      let successCount = 0;
+      let failCount = 0;
+      
       await new Promise((resolve, reject) => {
         const transaction = db.db.transaction(['snapshots'], 'readwrite');
         const store = transaction.objectStore('snapshots');
         
-        let completed = 0;
         const total = sessionData.snapshots.length;
         
-        sessionData.snapshots.forEach((snapshotData) => {
-          // 删除原始数据中的 id 和 sessionId，避免冲突
-          const { id: originalId, sessionId: originalSessionId, ...restData } = snapshotData;
-          
+        sessionData.snapshots.forEach((snapshotData, index) => {
           const snapshot = {
-            id: originalId || db.generateId(),
-            sessionId: session.id,
-            ...restData,
-            timestamp: snapshotData.timestamp || Date.now()
+            id: db.generateId(),
+            sessionId: newSessionId,
+            timestamp: snapshotData.timestamp || Date.now(),
+            localStorage: snapshotData.localStorage || {},
+            sessionStorage: snapshotData.sessionStorage || {}
           };
           
           const req = store.add(snapshot);
           req.onsuccess = () => {
-            completed++;
-            if (completed === total) resolve();
+            successCount++;
+            if (successCount + failCount === total) resolve();
           };
-          req.onerror = () => reject(req.error);
+          req.onerror = (e) => {
+            failCount++;
+            console.error(`[Import] 快照 ${index} 保存失败:`, e.target.error);
+            if (successCount + failCount === total) resolve();
+          };
         });
         
         if (total === 0) resolve();
       });
     }
 
-    console.log(`[Service Worker] 会话导入成功: ${session.id}`);
-    sendResponse({ success: true, sessionId: session.id });
+    console.log(`[Service Worker] 会话导入成功: ${newSessionId}`);
+    sendResponse({ success: true, sessionId: newSessionId });
   } catch (error) {
     console.error('[Service Worker] 会话导入失败:', error);
+    console.error('[Service Worker] 错误详情:', error.name, error.message);
     sendResponse({ success: false, error: error.message });
   }
 }
