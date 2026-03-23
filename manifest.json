@@ -2,15 +2,14 @@
   "manifest_version": 3,
   "name": "WebRecorder - 网页记录器",
   "version": "1.0.0",
-  "description": "捕获网页网络请求和存储数据，支持导出和回放。",
-  "author": "lipei",
-  "homepage_url": "https://github.com/your-repo/web-recorder",
+  "description": "专业的网页请求录制与回放工具，支持 HTTP/WebSocket 请求捕获、数据导出和智能回放功能。",
+  "author": "lipei2017",
+  "homepage_url": "https://github.com/lipei2017/web-recorder",
   "permissions": [
     "activeTab",
     "storage",
     "tabs",
     "scripting",
-    "cookies",
     "downloads",
     "unlimitedStorage",
     "alarms"
@@ -36,7 +35,8 @@
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    }
+    },
+    "default_title": "WebRecorder - 开始录制"
   },
   "options_page": "options/options.html",
   "icons": {

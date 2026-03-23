@@ -80,11 +80,19 @@ web-recorder/
 
 ## 安装方法
 
-### 1. 下载项目
+### 从 Chrome 应用商店安装（推荐）
+
+1. 访问 [Chrome 应用商店](https://chrome.google.com/webstore)
+2. 搜索 "WebRecorder"
+3. 点击"添加至 Chrome"
+
+### 手动安装（开发版）
+
+#### 1. 下载项目
 
 将 `web-recorder` 文件夹下载到本地。
 
-### 2. 加载到 Chrome
+#### 2. 加载到 Chrome
 
 1. 打开 Chrome 浏览器，进入扩展管理页面：
    ```
@@ -315,13 +323,38 @@ web-recorder/
 
 欢迎提交 Issue 和 Pull Request！
 
+### 开发环境设置
+
+1. Clone 项目
+2. 在 Chrome 中加载未打包的扩展
+3. 修改代码后刷新扩展
+
+### 打包发布
+
+**Linux/Mac:**
+```bash
+./package.sh
+```
+
+**Windows:**
+```bash
+package.bat
+```
+
+详细发布流程请查看 [BUILD.md](BUILD.md)
+
 ## 许可证
 
 MIT License
 
+## 隐私政策
+
+查看 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+
 ## 联系方式
 
-如有问题或建议，请在 GitHub 上提交 Issue。
+- GitHub Issues: 报告问题和建议
+- Email: [你的邮箱]
 
 ---
 

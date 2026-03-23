@@ -1,5 +1,5 @@
-import { db } from '../storage/indexeddb.js';
-import { domainManager } from './domain-config.js';
+import { db } from '/storage/indexeddb.js';
+import { domainManager } from '/background/domain-config.js';
 
 // 状态管理
 let isRecording = false;
