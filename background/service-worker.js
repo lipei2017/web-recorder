@@ -887,10 +887,13 @@ async function handleImportSession(sessionData, sendResponse) {
         const total = sessionData.requests.length;
         
         sessionData.requests.forEach((reqData) => {
+          // 删除原始数据中的 id 和 sessionId，避免冲突
+          const { id: originalId, sessionId: originalSessionId, ...restData } = reqData;
+          
           const request = {
-            id: reqData.id || db.generateId(),
+            id: originalId || db.generateId(),
             sessionId: session.id,
-            ...reqData,
+            ...restData,
             timestamp: reqData.timestamp || Date.now()
           };
           
@@ -916,10 +919,13 @@ async function handleImportSession(sessionData, sendResponse) {
         const total = sessionData.snapshots.length;
         
         sessionData.snapshots.forEach((snapshotData) => {
+          // 删除原始数据中的 id 和 sessionId，避免冲突
+          const { id: originalId, sessionId: originalSessionId, ...restData } = snapshotData;
+          
           const snapshot = {
-            id: snapshotData.id || db.generateId(),
+            id: originalId || db.generateId(),
             sessionId: session.id,
-            ...snapshotData,
+            ...restData,
             timestamp: snapshotData.timestamp || Date.now()
           };
           
