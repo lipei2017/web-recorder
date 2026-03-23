@@ -648,6 +648,7 @@ function matchUrlPath(url, pattern) {
 }
 
 function showExportModal(sessionId, session, format = 'json') {
+  console.log('[Export] 打开导出模态框:', { sessionId, format, requestsCount: session?.requests?.length || 0, session });
   currentExportSession = session;
   currentExportSessionId = sessionId;
   currentExportFormat = format;
@@ -784,7 +785,13 @@ function updateExportPreview() {
 
 // 导出 JSON（带配置）
 async function exportJSONWithConfig() {
-  if (!currentExportSession) return;
+  console.log('[Export] 开始导出，currentExportSession:', currentExportSession);
+  
+  if (!currentExportSession) {
+    console.error('[Export] 错误：currentExportSession 为空');
+    alert('导出失败：未选择会话');
+    return;
+  }
   
   const exportRequests = document.getElementById('exportRequests').checked;
   const exportSnapshots = document.getElementById('exportSnapshots').checked;
@@ -793,6 +800,9 @@ async function exportJSONWithConfig() {
   const requestFilter = document.getElementById('requestFilter').value;
   const urlPathFilter = document.getElementById('urlPathFilter').value.trim();
   let filename = document.getElementById('exportFilename').value.trim();
+  
+  console.log('[Export] 导出选项:', { exportRequests, exportSnapshots, exportSessionInfo, requestFilter, urlPathFilter });
+  console.log('[Export] 原始请求数量:', currentExportSession.requests?.length || 0);
   
   if (!filename) {
     const date = new Date(currentExportSession.startTime);
@@ -820,9 +830,11 @@ async function exportJSONWithConfig() {
     
     if (exportRequests && currentExportSession.requests) {
       let requests = [...currentExportSession.requests];
+      console.log('[Export] 复制后请求数量:', requests.length);
       
       // 应用类型过滤器
       if (requestFilter !== 'all') {
+        const beforeFilter = requests.length;
         if (requestFilter === 'success') {
           requests = requests.filter(r => r.status >= 200 && r.status < 300);
         } else if (requestFilter === 'error') {
@@ -830,15 +842,21 @@ async function exportJSONWithConfig() {
         } else {
           requests = requests.filter(r => r.type === requestFilter);
         }
+        console.log('[Export] 类型过滤后:', requests.length, '(过滤前:', beforeFilter, ')');
       }
       
       // 应用 URL 路径过滤
       if (urlPathFilter) {
+        const beforeFilter = requests.length;
         requests = requests.filter(r => matchUrlPath(r.url, urlPathFilter));
+        console.log('[Export] URL过滤后:', requests.length, '(过滤前:', beforeFilter, ')');
       }
       
       exportData.requests = requests;
       exportData.requestCount = requests.length;
+      console.log('[Export] 最终导出请求数量:', requests.length);
+    } else {
+      console.log('[Export] 未导出请求:', { exportRequests, hasRequests: !!currentExportSession.requests });
     }
     
     if (exportSnapshots && currentExportSession.snapshots) {
