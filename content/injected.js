@@ -239,6 +239,17 @@
   // ==================== 立即劫持 WebSocket 构造函数 ====================
   const OriginalWebSocket = RealWebSocket;
   window.WebSocket = function(url, protocols) {
+    // 如果不在录制状态且不在回放状态，直接返回真实 WebSocket，不做任何劫持
+    if (!isCapturing && !isPlayingBack) {
+      // 检查是否需要等待回放数据
+      if (isWaitingForPlaybackData) {
+        // 处于等待回放数据模式，需要特殊处理
+        // 继续执行下方的回放检查逻辑
+      } else {
+        return new OriginalWebSocket(url, protocols);
+      }
+    }
+    
     let shouldUsePlayback = isPlayingBack;
     
     // 如果还没设置，从 sessionStorage 检查
@@ -267,6 +278,11 @@
       if (messages && messages.length > 0) {
         return createHijackedWebSocket(url, protocols, messages);
       }
+    }
+    
+    // 如果不在录制状态，返回原始 WebSocket（已检查过 isWaitingForPlaybackData）
+    if (!isCapturing) {
+      return new OriginalWebSocket(url, protocols);
     }
     
     // 创建真实 WebSocket
@@ -443,6 +459,11 @@
   function interceptXHR() {
 
     window.XMLHttpRequest = function() {
+      // 如果不在录制状态且不在回放状态，直接返回真实 XHR 实例，不做任何拦截
+      if (!isCapturing && !isPlayingBack) {
+        return new RealXMLHttpRequest();
+      }
+      
       // 如果正在回放，直接返回真实 XHR 实例，让回放拦截器处理
       if (isPlayingBack) {
         return new RealXMLHttpRequest();
@@ -471,49 +492,46 @@
       };
 
       xhrInstance.send = function(body) {
+        requestBody = body;
+        startTime = performance.now();
 
-        if (isCapturing) {
-          requestBody = body;
-          startTime = performance.now();
+        // 监听响应
+        const onLoad = async () => {
+          const duration = performance.now() - startTime;
+          await captureRequest({
+            type: 'xhr',
+            method: method,
+            url: url,
+            headers: requestHeaders,
+            requestBody: parseBody(requestBody),
+            status: xhrInstance.status,
+            responseHeaders: parseResponseHeaders(xhrInstance.getAllResponseHeaders()),
+            responseBody: parseResponse(xhrInstance.response),
+            duration: Math.round(duration),
+            timestamp: Date.now()
+          });
+        };
 
-          // 监听响应
-          const onLoad = async () => {
-            const duration = performance.now() - startTime;
-            await captureRequest({
-              type: 'xhr',
-              method: method,
-              url: url,
-              headers: requestHeaders,
-              requestBody: parseBody(requestBody),
-              status: xhrInstance.status,
-              responseHeaders: parseResponseHeaders(xhrInstance.getAllResponseHeaders()),
-              responseBody: parseResponse(xhrInstance.response),
-              duration: Math.round(duration),
-              timestamp: Date.now()
-            });
-          };
+        const onError = async () => {
+          const duration = performance.now() - startTime;
+          await captureRequest({
+            type: 'xhr',
+            method: method,
+            url: url,
+            headers: requestHeaders,
+            requestBody: parseBody(requestBody),
+            status: 0,
+            responseHeaders: {},
+            responseBody: null,
+            error: 'Network Error',
+            duration: Math.round(duration),
+            timestamp: Date.now()
+          });
+        };
 
-          const onError = async () => {
-            const duration = performance.now() - startTime;
-            await captureRequest({
-              type: 'xhr',
-              method: method,
-              url: url,
-              headers: requestHeaders,
-              requestBody: parseBody(requestBody),
-              status: 0,
-              responseHeaders: {},
-              responseBody: null,
-              error: 'Network Error',
-              duration: Math.round(duration),
-              timestamp: Date.now()
-            });
-          };
-
-          xhrInstance.addEventListener('load', onLoad);
-          xhrInstance.addEventListener('error', onError);
-          xhrInstance.addEventListener('abort', onError);
-        }
+        xhrInstance.addEventListener('load', onLoad);
+        xhrInstance.addEventListener('error', onError);
+        xhrInstance.addEventListener('abort', onError);
 
         return realSend(body);
       };
