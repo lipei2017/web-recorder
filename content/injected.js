@@ -459,13 +459,10 @@
   function interceptXHR() {
 
     window.XMLHttpRequest = function() {
-      // 如果不在录制状态且不在回放状态，直接返回真实 XHR 实例，不做任何拦截
-      if (!isCapturing && !isPlayingBack) {
-        return new RealXMLHttpRequest();
-      }
-      
-      // 如果正在回放，直接返回真实 XHR 实例，让回放拦截器处理
-      if (isPlayingBack) {
+      // 录制拦截器只应该在录制状态下拦截请求
+      // 如果不在录制状态，直接返回真实 XHR，不做任何处理
+      // 回放拦截器会在需要时独立处理
+      if (!isCapturing) {
         return new RealXMLHttpRequest();
       }
       
@@ -495,43 +492,46 @@
         requestBody = body;
         startTime = performance.now();
 
-        // 监听响应
-        const onLoad = async () => {
-          const duration = performance.now() - startTime;
-          await captureRequest({
-            type: 'xhr',
-            method: method,
-            url: url,
-            headers: requestHeaders,
-            requestBody: parseBody(requestBody),
-            status: xhrInstance.status,
-            responseHeaders: parseResponseHeaders(xhrInstance.getAllResponseHeaders()),
-            responseBody: parseResponse(xhrInstance.response),
-            duration: Math.round(duration),
-            timestamp: Date.now()
-          });
-        };
+        // 只有在录制状态时才监听响应
+        if (isCapturing) {
+          // 监听响应
+          const onLoad = async () => {
+            const duration = performance.now() - startTime;
+            await captureRequest({
+              type: 'xhr',
+              method: method,
+              url: url,
+              headers: requestHeaders,
+              requestBody: parseBody(requestBody),
+              status: xhrInstance.status,
+              responseHeaders: parseResponseHeaders(xhrInstance.getAllResponseHeaders()),
+              responseBody: parseResponse(xhrInstance.response),
+              duration: Math.round(duration),
+              timestamp: Date.now()
+            });
+          };
 
-        const onError = async () => {
-          const duration = performance.now() - startTime;
-          await captureRequest({
-            type: 'xhr',
-            method: method,
-            url: url,
-            headers: requestHeaders,
-            requestBody: parseBody(requestBody),
-            status: 0,
-            responseHeaders: {},
-            responseBody: null,
-            error: 'Network Error',
-            duration: Math.round(duration),
-            timestamp: Date.now()
-          });
-        };
+          const onError = async () => {
+            const duration = performance.now() - startTime;
+            await captureRequest({
+              type: 'xhr',
+              method: method,
+              url: url,
+              headers: requestHeaders,
+              requestBody: parseBody(requestBody),
+              status: 0,
+              responseHeaders: {},
+              responseBody: null,
+              error: 'Network Error',
+              duration: Math.round(duration),
+              timestamp: Date.now()
+            });
+          };
 
-        xhrInstance.addEventListener('load', onLoad);
-        xhrInstance.addEventListener('error', onError);
-        xhrInstance.addEventListener('abort', onError);
+          xhrInstance.addEventListener('load', onLoad);
+          xhrInstance.addEventListener('error', onError);
+          xhrInstance.addEventListener('abort', onError);
+        }
 
         return realSend(body);
       };
@@ -804,8 +804,11 @@
   }
 
   // 初始化拦截器
-  interceptXHR();
-  interceptFetch();
+  // 只注入回放拦截器，它同时处理录制和回放两种状态
+  // - 录制时（isCapturing=true）：捕获请求
+  // - 回放时（isPlayingBack=true）：拦截并返回录制数据
+  // - 其他时候：直接返回真实XHR
+  injectPlaybackInterceptors();
   // WebSocket 拦截已在脚本开头完成，不需要再次调用
 
   // 注意：WebSocket 回放只在点击回放按钮后生效
@@ -845,7 +848,6 @@
     }
 
     playbackSession = session;
-    isPlayingBack = true;
     
     // 构建请求映射表（按 URL 和方法）
     buildRequestMap();
@@ -853,8 +855,8 @@
     // 初始化 WebSocket 回放管理器
     WebSocketPlaybackManager.initPlayback(session);
 
-    // 注入拦截器
-    injectPlaybackInterceptors();
+    // 设置回放标志（回放拦截器已在页面加载时注入）
+    isPlayingBack = true;
     
     // 劫持已存在的 WebSocket 实例（延迟等待页面设置监听器）
     hijackWithDelay();
@@ -895,6 +897,8 @@
       return;
     }
     
+    const xhrRequests = [];
+    
     playbackSession.requests.forEach(req => {
       // 只处理 XHR 和 Fetch 请求
       if (req.type !== 'xhr' && req.type !== 'fetch') {
@@ -913,6 +917,14 @@
           requestMap.set(key, []);
         }
         requestMap.get(key).push(req);
+        
+        xhrRequests.push({
+          method: req.method,
+          url: req.url.substring(0, 80),
+          pathname: pathname,
+          pattern: pattern,
+          key: key
+        });
       } catch (e) {
         // URL 解析失败，使用完整 URL
         const key = `${req.method}|${req.url}`;
@@ -920,12 +932,18 @@
           requestMap.set(key, []);
         }
         requestMap.get(key).push(req);
+        
+        xhrRequests.push({
+          method: req.method,
+          url: req.url.substring(0, 80),
+          key: key,
+          error: true
+        });
       }
     });
   }
   function processCachedXHR(cachedRequest) {
     const { method, url, headers, body, callbacks } = cachedRequest;
-    
     
     // 检查 URL 是否被过滤
     const filters = getPlaybackFilters();
@@ -1017,7 +1035,6 @@
   // 处理缓存的 Fetch 请求
   function processCachedFetch(cachedRequest) {
     const { resource, init, url, method, resolve, reject } = cachedRequest;
-    
     
     // 检查 URL 是否被过滤
     const filters = getPlaybackFilters();
@@ -1402,7 +1419,13 @@
     injectPlaybackXHR();
     injectPlaybackFetch();
     injectGlobalWebSocketInterceptor();
-    // WebSocket 劫持已在脚本最开始完成
+    // WebSocket 拦截已在脚本最开始完成
+  }
+
+  // 预注入回放拦截器（页面加载时注入）
+  function preInjectPlaybackInterceptors() {
+    injectPlaybackXHR();
+    injectPlaybackFetch();
   }
   
   // 注入全局 WebSocket 消息拦截器
@@ -1522,8 +1545,6 @@
 
   // 拦截 XMLHttpRequest（回放模式）
   function injectPlaybackXHR() {
-
-    
     const OriginalXHR = playbackOriginalXHR;
     
     window.XMLHttpRequest = function() {
@@ -1631,6 +1652,7 @@
         // 提取 pathname 进行匹配
         const pathname = getPathname(url);
         const key = `${method}|${pathname}`;
+        
         const requests = requestMap.get(key);
         
         if (requests && requests.length > 0) {
